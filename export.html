@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FloraSync Lite — Export Data</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style id="sharedStyle"></style>
+  <style>
+    .format-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 1.5rem;
+    }
+    .format-card {
+      border: 2px solid var(--gray-100);
+      border-radius: 12px;
+      padding: 1.25rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: #fff;
+    }
+    .format-card:hover    { border-color: var(--green-200); }
+    .format-card.selected { border-color: var(--green-400); background: var(--green-50); }
+    .format-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .icon-csv { background: var(--teal-50); }
+    .icon-pdf { background: var(--red-50);  }
+    .format-title { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+    .format-desc  { font-size: 13px; color: var(--gray-400); }
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .preview-title { font-size: 13px; font-weight: 600; color: var(--gray-600); }
+    .preview-count { font-size: 12px; color: var(--gray-400); }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 28px;
+      background: var(--green-400);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 1.25rem;
+      font-family: inherit;
+    }
+    .btn-download:hover    { background: var(--green-600); }
+    .btn-download:disabled { background: var(--gray-100); color: var(--gray-400); cursor: not-allowed; }
+    .btn-preview {
+      padding: 9px 18px;
+      background: var(--blue-400);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+    .btn-preview:hover { background: var(--blue-600); }
+  </style>
+</head>
+<body>
+  <div id="sidebarMount"></div>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">Export Data</div>
+      <div class="page-subtitle">Unduh data historis sensor dalam format CSV atau PDF</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">1. Pilih Format</div>
+      <div class="format-grid">
+        <div class="format-card selected" id="cardCSV" onclick="selectFmt('csv')">
+          <div class="format-icon icon-csv">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--teal-600)" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13h8M8 17h8"/></svg>
+          </div>
+          <div class="format-title">CSV</div>
+          <div class="format-desc">Comma Separated Value. Cocok untuk Excel atau analisis data lebih lanjut.</div>
+        </div>
+        <div class="format-card" id="cardPDF" onclick="selectFmt('pdf')">
+          <div class="format-icon icon-pdf">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--red-600)" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/><path stroke-linecap="round" d="M9 13h1.5a1.5 1.5 0 010 3H9v-3zM14 13h2M14 16h1"/></svg>
+          </div>
+          <div class="format-title">PDF</div>
+          <div class="format-desc">Portable Document Format. Cocok untuk laporan atau dokumentasi resmi.</div>
+        </div>
+      </div>
+
+      <div class="card-title">2. Pilih Rentang Tanggal</div>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label>Dari</label>
+          <input type="date" id="dateFrom"/>
+        </div>
+        <div class="filter-group">
+          <label>Sampai</label>
+          <input type="date" id="dateTo"/>
+        </div>
+        <button class="btn-preview" onclick="loadPreview()">Preview Data</button>
+      </div>
+
+      <div class="card-title">3. Preview Data</div>
+      <div class="preview-header">
+        <span class="preview-title">10 data terbaru dari hasil filter</span>
+        <span class="preview-count" id="previewCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Suhu (°C)</th>
+              <th>Kelembaban Udara (%)</th>
+              <th>Kelembaban Tanah (ADC)</th>
+              <th>Cahaya (ADC)</th>
+              <th>Level Air (cm)</th>
+              <th>Pompa</th>
+              <th>Kipas</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody">
+            <tr><td colspan="8" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <button class="btn-download" id="btnDownload" disabled onclick="doExport()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Download Data
+      </button>
+    </div>
+  </main>
+
+  <script type="module">
+    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    document.getElementById("sharedStyle").textContent = sharedCSS;
+    document.getElementById("sidebarMount").innerHTML  = buildSidebar("export");
+
+    // Default: 7 hari terakhir
+    const today   = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    document.getElementById("dateTo").value   = today.toISOString().split("T")[0];
+    document.getElementById("dateFrom").value = weekAgo.toISOString().split("T")[0];
+
+    window._fmt        = "csv";
+    window._exportData = [];
+
+    window.selectFmt = function(fmt) {
+      window._fmt = fmt;
+      document.getElementById("cardCSV").className = "format-card" + (fmt === "csv" ? " selected" : "");
+      document.getElementById("cardPDF").className = "format-card" + (fmt === "pdf" ? " selected" : "");
+    };
+
+    requireAuth(() => {
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+    });
+
+    window.loadPreview = async function() {
+      const fromVal = document.getElementById("dateFrom").value;
+      const toVal   = document.getElementById("dateTo").value;
+      const tbody   = document.getElementById("previewBody");
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Memuat...</td></tr>`;
+
+      const snap = await get(ref(db, "/history"));
+      let data = [];
+      if (snap.exists()) {
+        snap.forEach(child => {
+          const d = child.val();
+          d._key = child.key;
+          data.push(d);
+        });
+      }
+
+      if (fromVal) {
+        const from = new Date(fromVal).getTime();
+        data = data.filter(d => Number(d._key) >= from);
+      }
+      if (toVal) {
+        const to = new Date(toVal);
+        to.setHours(23, 59, 59, 999);
+        data = data.filter(d => Number(d._key) <= to.getTime());
+      }
+
+      data.sort((a, b) => Number(b._key) - Number(a._key));
+      window._exportData = data;
+
+      document.getElementById("previewCount").textContent = data.length + " record ditemukan";
+      document.getElementById("btnDownload").disabled = data.length === 0;
+
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.slice(0, 10).map(d => {
+        const ts   = new Date(Number(d._key));
+        const tStr = ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID");
+        return `<tr>
+          <td>${tStr}</td>
+          <td>${fNum(d.temperature, 1)}</td>
+          <td>${fNum(d.humidity,    1)}</td>
+          <td>${fNum(d.soilMoisture, 0)}</td>
+          <td>${fNum(d.ldrValue,    0)}</td>
+          <td>${fNum(d.waterLevel,  1)}</td>
+          <td>${d.pump ? "ON" : "OFF"}</td>
+          <td>${d.fan  ? "ON" : "OFF"}</td>
+        </tr>`;
+      }).join("");
+    };
+
+    window.doExport = function() {
+      const data = window._exportData;
+      if (!data || data.length === 0) return;
+      window._fmt === "csv" ? exportCSV(data) : exportPDF(data);
+    };
+
+    function exportCSV(data) {
+      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"];
+      const rows   = data.map(d => {
+        const ts = new Date(Number(d._key));
+        return [
+          ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID"),
+          fNum(d.temperature, 1),
+          fNum(d.humidity,    1),
+          fNum(d.soilMoisture, 0),
+          fNum(d.ldrValue,    0),
+          fNum(d.waterLevel,  1),
+          d.pump ? "ON" : "OFF",
+          d.fan  ? "ON" : "OFF"
+        ].join(",");
+      });
+      const csv  = [header.join(","), ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url;
+      a.download = "florasync_data_" + new Date().toISOString().split("T")[0] + ".csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportPDF(data) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "landscape" });
+
+      doc.setFontSize(16);
+      doc.setTextColor(39, 80, 10);
+      doc.text("FloraSync Lite — Laporan Data Sensor Greenhouse", 14, 16);
+
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text("Digenerate: " + new Date().toLocaleString("id-ID"), 14, 23);
+      doc.text("Total record: " + data.length, 14, 28);
+
+      doc.autoTable({
+        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"]],
+        body: data.map(d => {
+          const ts = new Date(Number(d._key));
+          return [
+            ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID"),
+            fNum(d.temperature, 1),
+            fNum(d.humidity,    1),
+            fNum(d.soilMoisture, 0),
+            fNum(d.ldrValue,    0),
+            fNum(d.waterLevel,  1),
+            d.pump ? "ON" : "OFF",
+            d.fan  ? "ON" : "OFF"
+          ];
+        }),
+        startY: 34,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [63, 109, 17], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [234, 243, 222] },
+        margin: { left: 14, right: 14 }
+      });
+
+      doc.save("florasync_laporan_" + new Date().toISOString().split("T")[0] + ".pdf");
+    }
+
+    function fNum(val, dec) {
+      if (val === undefined || val === null) return "—";
+      return dec > 0 ? Number(val).toFixed(dec) : Math.round(val);
+    }
+  </script>
+</body>
+</html>

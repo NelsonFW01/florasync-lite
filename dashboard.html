@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FloraSync Lite — Dashboard</title>
+  <style id="sharedStyle"></style>
+  <style>
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .water-alert {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #7c5800;
+      margin-bottom: 1.25rem;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--gray-100);
+      font-size: 13px;
+      color: var(--gray-600);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-val { font-weight: 600; color: #1a1a1a; }
+  </style>
+</head>
+<body>
+  <div id="sidebarMount"></div>
+
+  <main class="main">
+    <div class="header-row">
+      <div class="page-header" style="margin-bottom:0">
+        <div class="page-title">Dashboard</div>
+        <div class="page-subtitle">Ringkasan kondisi greenhouse secara real-time</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="deviceStatus" class="badge badge-offline">
+          <span class="dot"></span> Offline
+        </span>
+        <span id="lastUpdate" style="font-size:12px;color:var(--gray-400);">—</span>
+      </div>
+    </div>
+
+    <!-- Water alert -->
+    <div id="waterAlert" class="water-alert">
+      ⚠️ <strong>Peringatan:</strong> Level air reservoir rendah! Segera isi ulang.
+    </div>
+
+    <!-- Sensor cards -->
+    <div class="grid-5">
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg>
+          Suhu Udara
+        </div>
+        <div class="stat-value" id="d_temp">—<span class="stat-unit"> °C</span></div>
+        <span id="b_temp" class="badge badge-normal">Normal</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+          Kelembaban Udara
+        </div>
+        <div class="stat-value" id="d_humid">—<span class="stat-unit"> %</span></div>
+        <span id="b_humid" class="badge badge-normal">Normal</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#639922" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22V12M12 12C12 7 17 4 17 4S12 8 7 4c0 0 5 3 5 8z"/></svg>
+          Kelembaban Tanah
+        </div>
+        <div class="stat-value" id="d_soil">—<span class="stat-unit"> ADC</span></div>
+        <span id="b_soil" class="badge badge-normal">Normal</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2"><circle cx="12" cy="12" r="5"/><path stroke-linecap="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          Intensitas Cahaya
+        </div>
+        <div class="stat-value" id="d_ldr">—<span class="stat-unit"> ADC</span></div>
+        <span id="b_ldr" class="badge badge-normal">Normal</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#185FA5" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 16V7a2 2 0 00-2-2H6a2 2 0 00-2 2v9m16 0H4m16 0l1.28 2.55A1 1 0 0120.37 20H3.63a1 1 0 01-.91-1.45L4 16"/></svg>
+          Level Air
+        </div>
+        <div class="stat-value" id="d_water">—<span class="stat-unit"> cm</span></div>
+        <span id="b_water" class="badge badge-normal">Normal</span>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Aktuator -->
+      <div class="card">
+        <div class="card-title">Status Aktuator</div>
+        <div class="actuator-row">
+          <div class="actuator-name">
+            <div class="act-icon act-off" id="iconPump">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+            </div>
+            Pompa Air
+          </div>
+          <span id="tagPump" class="tag-off">OFF</span>
+        </div>
+        <div class="actuator-row">
+          <div class="actuator-name">
+            <div class="act-icon act-off" id="iconFan">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2"><path stroke-linecap="round" d="M12 12m-1 0a1 1 0 102 0 1 1 0 10-2 0"/><path stroke-linecap="round" d="M12 6C10.5 3 7 2 5 4s-1 5.5 1 7M18 12c3-1.5 4-5 2-7s-5.5-1-7 1M12 18c1.5 3 5 4 7 2s1-5.5-1-7M6 12C3 13.5 2 17 4 19s5.5 1 7-1"/></svg>
+            </div>
+            Kipas
+          </div>
+          <span id="tagFan" class="tag-off">OFF</span>
+        </div>
+      </div>
+
+      <!-- Info sistem -->
+      <div class="card">
+        <div class="card-title">Informasi Sistem</div>
+        <div class="info-row"><span>Tanaman</span><span class="info-val">Pakcoy, Cabai, Kemangi</span></div>
+        <div class="info-row"><span>Dimensi</span><span class="info-val">55 × 45 × 40 cm</span></div>
+        <div class="info-row"><span>Mikrokontroler</span><span class="info-val">ESP32</span></div>
+        <div class="info-row"><span>Sensor</span><span class="info-val">DHT22, Soil, LDR, HC-SR04</span></div>
+        <div class="info-row"><span>Sumber daya</span><span class="info-val">Adaptor 5V/2A</span></div>
+        <div class="info-row"><span>Interval baca</span><span class="info-val">5 detik</span></div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    document.getElementById("sharedStyle").textContent = sharedCSS;
+    document.getElementById("sidebarMount").innerHTML  = buildSidebar("dashboard");
+
+    requireAuth(() => {
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+      listenData();
+    });
+
+    function listenData() {
+      onValue(ref(db, "/sensor"), snap => {
+        const d = snap.val();
+        if (!d) return;
+
+        const now = new Date();
+        document.getElementById("lastUpdate").textContent =
+          "Update: " + now.toLocaleTimeString("id-ID");
+        setOnline();
+
+        // Values
+        setVal("d_temp",  d.temperature, 1, "°C");
+        setVal("d_humid", d.humidity,    1, "%");
+        setVal("d_soil",  d.soilMoisture, 0, "ADC");
+        setVal("d_ldr",   d.ldrValue,    0, "ADC");
+        setVal("d_water", d.waterLevel,  1, "cm");
+
+        // Badges
+        setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
+        setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
+        setBadge("b_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
+        setBadge("b_ldr",   d.ldrValue,     () => "normal");
+        setBadge("b_water", d.waterLevel,   v => v < 5 ? "danger" : v < 10 ? "warning" : "normal");
+
+        // Water alert
+        const alert = document.getElementById("waterAlert");
+        alert.style.display = (d.waterLevel !== undefined && d.waterLevel < 5) ? "flex" : "none";
+      });
+
+      onValue(ref(db, "/actuator"), snap => {
+        const d = snap.val();
+        if (!d) return;
+        setActuator("Pump", d.pump);
+        setActuator("Fan",  d.fan);
+      });
+    }
+
+    function setOnline() {
+      const el = document.getElementById("deviceStatus");
+      el.className   = "badge badge-online";
+      el.innerHTML   = '<span class="dot"></span> Online';
+    }
+
+    function setVal(id, val, decimals, unit) {
+      const el = document.getElementById(id);
+      const v  = val !== undefined && val !== null
+        ? (decimals > 0 ? Number(val).toFixed(decimals) : Math.round(val))
+        : "—";
+      el.innerHTML = v + '<span class="stat-unit"> ' + unit + '</span>';
+    }
+
+    function setBadge(id, val, fn) {
+      const el = document.getElementById(id);
+      if (val === undefined || val === null) return;
+      const state = fn(val);
+      const labels = { normal: "Normal", warning: "Perhatian", danger: "Bahaya" };
+      el.className   = "badge badge-" + state;
+      el.textContent = labels[state];
+    }
+
+    function setActuator(name, isOn) {
+      const tag  = document.getElementById("tag"  + name);
+      const icon = document.getElementById("icon" + name);
+      if (isOn) {
+        tag.className  = "tag-on";  tag.textContent = "ON";
+        icon.className = "act-icon act-on";
+      } else {
+        tag.className  = "tag-off"; tag.textContent = "OFF";
+        icon.className = "act-icon act-off";
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FloraSync Lite — Data History</title>
+  <style id="sharedStyle"></style>
+  <style>
+    .record-info {
+      font-size: 12px;
+      color: var(--gray-400);
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebarMount"></div>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">Data History</div>
+      <div class="page-subtitle">Riwayat data sensor berdasarkan rentang tanggal</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Filter Tanggal</div>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label>Dari</label>
+          <input type="date" id="dateFrom"/>
+        </div>
+        <div class="filter-group">
+          <label>Sampai</label>
+          <input type="date" id="dateTo"/>
+        </div>
+        <button class="btn-primary" id="btnFilter">Tampilkan</button>
+        <button class="btn-secondary" id="btnAll">Semua Data</button>
+      </div>
+    </div>
+
+    <div class="record-info" id="recordInfo"></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Suhu (°C)</th>
+            <th>Kelembaban Udara (%)</th>
+            <th>Kelembaban Tanah (ADC)</th>
+            <th>Cahaya (ADC)</th>
+            <th>Level Air (cm)</th>
+            <th>Pompa</th>
+            <th>Kipas</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="8" class="empty-state">Memuat data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script type="module">
+    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    document.getElementById("sharedStyle").textContent = sharedCSS;
+    document.getElementById("sidebarMount").innerHTML  = buildSidebar("history");
+
+    // Default range: 7 hari terakhir
+    const today   = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    document.getElementById("dateTo").value   = today.toISOString().split("T")[0];
+    document.getElementById("dateFrom").value = weekAgo.toISOString().split("T")[0];
+
+    let allData = [];
+
+    requireAuth(async () => {
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+      document.getElementById("btnFilter").addEventListener("click", filterAndRender);
+      document.getElementById("btnAll").addEventListener("click", () => {
+        document.getElementById("dateFrom").value = "";
+        document.getElementById("dateTo").value   = "";
+        filterAndRender();
+      });
+
+      await loadData();
+      filterAndRender();
+    });
+
+    async function loadData() {
+      const snap = await get(ref(db, "/history"));
+      allData = [];
+      if (snap.exists()) {
+        snap.forEach(child => {
+          const d  = child.val();
+          d._key   = child.key;
+          allData.push(d);
+        });
+        allData.sort((a, b) => Number(b._key) - Number(a._key));
+      }
+    }
+
+    function filterAndRender() {
+      const fromVal = document.getElementById("dateFrom").value;
+      const toVal   = document.getElementById("dateTo").value;
+      const tbody   = document.getElementById("tableBody");
+
+      let filtered = [...allData];
+
+      if (fromVal) {
+        const from = new Date(fromVal).getTime();
+        filtered = filtered.filter(d => Number(d._key) >= from);
+      }
+      if (toVal) {
+        const to = new Date(toVal);
+        to.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(d => Number(d._key) <= to.getTime());
+      }
+
+      document.getElementById("recordInfo").textContent =
+        filtered.length + " data ditemukan" +
+        (fromVal || toVal ? " dalam rentang yang dipilih" : " (total)");
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(d => {
+        const ts  = new Date(Number(d._key));
+        const tStr = ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID");
+        return `<tr>
+          <td>${tStr}</td>
+          <td>${fNum(d.temperature, 1)}</td>
+          <td>${fNum(d.humidity,    1)}</td>
+          <td>${fNum(d.soilMoisture, 0)}</td>
+          <td>${fNum(d.ldrValue,    0)}</td>
+          <td>${fNum(d.waterLevel,  1)}</td>
+          <td><span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></td>
+          <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
+        </tr>`;
+      }).join("");
+    }
+
+    function fNum(val, dec) {
+      if (val === undefined || val === null) return "—";
+      return dec > 0 ? Number(val).toFixed(dec) : Math.round(val);
+    }
+  </script>
+</body>
+</html>

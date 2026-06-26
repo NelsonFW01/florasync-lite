@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FloraSync Lite — Monitoring</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style id="sharedStyle"></style>
+  <style>
+    .sensor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 1.25rem;
+    }
+    .sensor-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--gray-100);
+      padding: 1rem;
+    }
+    .sensor-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .sensor-name { font-size: 12px; color: var(--gray-400); }
+    .sensor-big  { font-size: 30px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+    .sensor-unit { font-size: 14px; font-weight: 400; color: var(--gray-400); }
+    .chart-card  {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--gray-100);
+      padding: 1.1rem;
+      margin-bottom: 1.25rem;
+    }
+    .chart-title { font-size: 13px; font-weight: 600; color: var(--gray-600); margin-bottom: 0.75rem; }
+    canvas { max-height: 180px; }
+    .threshold-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--gray-100);
+      font-size: 13px;
+      color: var(--gray-600);
+    }
+    .threshold-row:last-child { border-bottom: none; }
+    .threshold-val { font-weight: 600; color: #1a1a1a; }
+  </style>
+</head>
+<body>
+  <div id="sidebarMount"></div>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">Monitoring</div>
+      <div class="page-subtitle">Nilai sensor terkini & tren 20 pembacaan terakhir</div>
+    </div>
+
+    <!-- Sensor cards -->
+    <div class="sensor-grid">
+      <div class="sensor-card">
+        <div class="sensor-top">
+          <div class="sensor-name">Suhu Udara</div>
+          <span id="mb_temp" class="badge badge-normal">Normal</span>
+        </div>
+        <div class="sensor-big" id="m_temp">—<span class="sensor-unit"> °C</span></div>
+      </div>
+      <div class="sensor-card">
+        <div class="sensor-top">
+          <div class="sensor-name">Kelembaban Udara</div>
+          <span id="mb_humid" class="badge badge-normal">Normal</span>
+        </div>
+        <div class="sensor-big" id="m_humid">—<span class="sensor-unit"> %</span></div>
+      </div>
+      <div class="sensor-card">
+        <div class="sensor-top">
+          <div class="sensor-name">Kelembaban Tanah</div>
+          <span id="mb_soil" class="badge badge-normal">Normal</span>
+        </div>
+        <div class="sensor-big" id="m_soil">—<span class="sensor-unit"> ADC</span></div>
+      </div>
+      <div class="sensor-card">
+        <div class="sensor-top">
+          <div class="sensor-name">Intensitas Cahaya</div>
+          <span id="mb_ldr" class="badge badge-normal">Normal</span>
+        </div>
+        <div class="sensor-big" id="m_ldr">—<span class="sensor-unit"> ADC</span></div>
+      </div>
+      <div class="sensor-card">
+        <div class="sensor-top">
+          <div class="sensor-name">Level Air</div>
+          <span id="mb_water" class="badge badge-normal">Normal</span>
+        </div>
+        <div class="sensor-big" id="m_water">—<span class="sensor-unit"> cm</span></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Aktuator -->
+      <div class="card">
+        <div class="card-title">Status Aktuator</div>
+        <div class="actuator-row">
+          <div class="actuator-name">
+            <div class="act-icon act-off" id="mIconPump"></div>
+            Pompa Air
+          </div>
+          <span id="mTagPump" class="tag-off">OFF</span>
+        </div>
+        <div class="actuator-row">
+          <div class="actuator-name">
+            <div class="act-icon act-off" id="mIconFan"></div>
+            Kipas
+          </div>
+          <span id="mTagFan" class="tag-off">OFF</span>
+        </div>
+      </div>
+
+      <!-- Threshold -->
+      <div class="card">
+        <div class="card-title">Threshold Sistem</div>
+        <div class="threshold-row"><span>Fan ON (suhu)</span><span class="threshold-val">&gt; 30 °C</span></div>
+        <div class="threshold-row"><span>Fan ON (kelembaban)</span><span class="threshold-val">&gt; 80 %</span></div>
+        <div class="threshold-row"><span>Pump ON (tanah kering)</span><span class="threshold-val">&lt; 2200 ADC</span></div>
+        <div class="threshold-row"><span>Durasi siram</span><span class="threshold-val">10 detik</span></div>
+        <div class="threshold-row"><span>Cooldown siram</span><span class="threshold-val">60 detik</span></div>
+        <div class="threshold-row"><span>Fan pasca siram</span><span class="threshold-val">90 detik</span></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-card">
+      <div class="chart-title">📈 Suhu Udara (°C)</div>
+      <canvas id="chartTemp"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">💧 Kelembaban Udara (%)</div>
+      <canvas id="chartHumid"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">🌱 Kelembaban Tanah (ADC)</div>
+      <canvas id="chartSoil"></canvas>
+    </div>
+  </main>
+
+  <script type="module">
+    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    document.getElementById("sharedStyle").textContent = sharedCSS;
+    document.getElementById("sidebarMount").innerHTML  = buildSidebar("monitoring");
+
+    const MAX = 20;
+    const timeLabels = [];
+    const tempArr    = [];
+    const humidArr   = [];
+    const soilArr    = [];
+
+    function makeChart(canvasId, label, color, dataArr) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      return new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: timeLabels,
+          datasets: [{
+            label,
+            data: dataArr,
+            borderColor: color,
+            backgroundColor: color + "20",
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: color,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: "#f0eeea" }, ticks: { font: { size: 10 }, color: "#888" } },
+            y: { grid: { color: "#f0eeea" }, ticks: { font: { size: 10 }, color: "#888" } }
+          }
+        }
+      });
+    }
+
+    let cTemp, cHumid, cSoil;
+
+    requireAuth(() => {
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+
+      cTemp  = makeChart("chartTemp",  "Suhu °C",    "#BA7517", tempArr);
+      cHumid = makeChart("chartHumid", "Kelembaban %","#378ADD", humidArr);
+      cSoil  = makeChart("chartSoil",  "Tanah ADC",  "#639922", soilArr);
+
+      onValue(ref(db, "/sensor"), snap => {
+        const d = snap.val();
+        if (!d) return;
+
+        const t = new Date().toLocaleTimeString("id-ID",
+          { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+        // Update display
+        setDisplay("m_temp",  d.temperature,  1, "°C");
+        setDisplay("m_humid", d.humidity,     1, "%");
+        setDisplay("m_soil",  d.soilMoisture, 0, "ADC");
+        setDisplay("m_ldr",   d.ldrValue,     0, "ADC");
+        setDisplay("m_water", d.waterLevel,   1, "cm");
+
+        // Badges
+        setBadge("mb_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
+        setBadge("mb_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
+        setBadge("mb_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
+        setBadge("mb_ldr",   d.ldrValue,     () => "normal");
+        setBadge("mb_water", d.waterLevel,   v => v < 5 ? "danger" : v < 10 ? "warning" : "normal");
+
+        // Chart update
+        if (timeLabels.length >= MAX) {
+          timeLabels.shift(); tempArr.shift(); humidArr.shift(); soilArr.shift();
+        }
+        timeLabels.push(t);
+        tempArr.push(d.temperature  ?? null);
+        humidArr.push(d.humidity    ?? null);
+        soilArr.push(d.soilMoisture ?? null);
+
+        cTemp.update("none");
+        cHumid.update("none");
+        cSoil.update("none");
+      });
+
+      onValue(ref(db, "/actuator"), snap => {
+        const d = snap.val();
+        if (!d) return;
+        setAct("mTagPump", "mIconPump", d.pump);
+        setAct("mTagFan",  "mIconFan",  d.fan);
+      });
+    });
+
+    function setDisplay(id, val, dec, unit) {
+      const v = val !== undefined && val !== null
+        ? (dec > 0 ? Number(val).toFixed(dec) : Math.round(val)) : "—";
+      document.getElementById(id).innerHTML =
+        v + '<span class="sensor-unit"> ' + unit + "</span>";
+    }
+
+    function setBadge(id, val, fn) {
+      const el = document.getElementById(id);
+      if (val === undefined || val === null) return;
+      const state = fn(val);
+      const labels = { normal: "Normal", warning: "Perhatian", danger: "Bahaya" };
+      el.className   = "badge badge-" + state;
+      el.textContent = labels[state];
+    }
+
+    function setAct(tagId, iconId, isOn) {
+      const tag  = document.getElementById(tagId);
+      const icon = document.getElementById(iconId);
+      if (isOn) {
+        tag.className  = "tag-on";  tag.textContent = "ON";
+        icon.className = "act-icon act-on";
+      } else {
+        tag.className  = "tag-off"; tag.textContent = "OFF";
+        icon.className = "act-icon act-off";
+      }
+    }
+  </script>
+</body>
+</html>
