@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FloraSync Lite — Dashboard</title>
-  <style id="sharedStyle"></style>
+  <link rel="stylesheet" href="shared.css"/>
   <style>
     .header-row {
       display: flex;
@@ -146,11 +146,10 @@
   </main>
 
   <script type="module">
-    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
     import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    document.getElementById("sharedStyle").textContent = sharedCSS;
-    document.getElementById("sidebarMount").innerHTML  = buildSidebar("dashboard");
+    document.getElementById("sidebarMount").innerHTML = buildSidebar("dashboard");
 
     requireAuth(() => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
@@ -167,21 +166,18 @@
           "Update: " + now.toLocaleTimeString("id-ID");
         setOnline();
 
-        // Values
-        setVal("d_temp",  d.temperature, 1, "°C");
-        setVal("d_humid", d.humidity,    1, "%");
+        setVal("d_temp",  d.temperature,  1, "°C");
+        setVal("d_humid", d.humidity,     1, "%");
         setVal("d_soil",  d.soilMoisture, 0, "ADC");
-        setVal("d_ldr",   d.ldrValue,    0, "ADC");
-        setVal("d_water", d.waterLevel,  1, "cm");
+        setVal("d_ldr",   d.ldrValue,     0, "ADC");
+        setVal("d_water", d.waterLevel,   1, "cm");
 
-        // Badges
         setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
         setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
         setBadge("b_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
         setBadge("b_ldr",   d.ldrValue,     () => "normal");
         setBadge("b_water", d.waterLevel,   v => v < 5 ? "danger" : v < 10 ? "warning" : "normal");
 
-        // Water alert
         const alert = document.getElementById("waterAlert");
         alert.style.display = (d.waterLevel !== undefined && d.waterLevel < 5) ? "flex" : "none";
       });
@@ -196,8 +192,8 @@
 
     function setOnline() {
       const el = document.getElementById("deviceStatus");
-      el.className   = "badge badge-online";
-      el.innerHTML   = '<span class="dot"></span> Online';
+      el.className = "badge badge-online";
+      el.innerHTML = '<span class="dot"></span> Online';
     }
 
     function setVal(id, val, decimals, unit) {
