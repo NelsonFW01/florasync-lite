@@ -42,13 +42,48 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .logo-name  { font-size: 18px; font-weight: 700; color: #27500A; }
     .logo-sub   { font-size: 11px; color: #888780; margin-top: 1px; }
 
-    h1 { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
-    .subtitle { font-size: 14px; color: #888780; margin-bottom: 1.75rem; }
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #EAF3DE;
+      margin-bottom: 1.75rem;
+      gap: 0;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #888780;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      font-family: inherit;
+    }
+
+    .tab-btn.active {
+      color: #639922;
+      border-bottom-color: #639922;
+    }
+
+    .tab-btn:hover:not(.active) { color: #3B6D11; }
+
+    /* Panels */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    h2 { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #888780; margin-bottom: 1.5rem; }
 
     label {
       display: block;
@@ -59,7 +94,8 @@
     }
 
     input[type="email"],
-    input[type="password"] {
+    input[type="password"],
+    input[type="text"] {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid #D3D1C7;
@@ -77,7 +113,7 @@
       box-shadow: 0 0 0 3px rgba(99,153,34,0.12);
     }
 
-    .btn-login {
+    .btn-primary {
       width: 100%;
       padding: 11px;
       background: #639922;
@@ -96,18 +132,39 @@
       gap: 8px;
     }
 
-    .btn-login:hover    { background: #3B6D11; }
-    .btn-login:disabled { background: #D3D1C7; cursor: not-allowed; }
+    .btn-primary:hover    { background: #3B6D11; }
+    .btn-primary:disabled { background: #D3D1C7; cursor: not-allowed; }
 
-    .error-msg {
+    .forgot-link {
+      display: block;
+      text-align: right;
+      font-size: 12px;
+      color: #639922;
+      text-decoration: none;
+      margin-top: -0.6rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+    .forgot-link:hover { text-decoration: underline; }
+
+    .alert {
       font-size: 13px;
-      color: #A32D2D;
-      background: #FCEBEB;
-      border: 1px solid #f5c6c6;
       border-radius: 8px;
       padding: 10px 12px;
       margin-top: 0.75rem;
       display: none;
+    }
+
+    .alert-error {
+      color: #A32D2D;
+      background: #FCEBEB;
+      border: 1px solid #f5c6c6;
+    }
+
+    .alert-success {
+      color: #1e5c1e;
+      background: #eaf7ea;
+      border: 1px solid #b2dfb2;
     }
 
     .spinner {
@@ -127,6 +184,22 @@
       font-size: 11px;
       color: #888780;
     }
+
+    .switch-text {
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 12px;
+      color: #888780;
+    }
+
+    .switch-text a {
+      color: #639922;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .switch-text a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -143,26 +216,90 @@
       </div>
     </div>
 
-    <h1>Masuk ke akun</h1>
-    <p class="subtitle">Pantau greenhouse kamu secara real-time</p>
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="login">Masuk</button>
+      <button class="tab-btn" data-tab="register">Daftar</button>
+      <button class="tab-btn" data-tab="forgot">Lupa Password</button>
+    </div>
 
-    <form id="loginForm">
-      <label for="email">Email</label>
-      <input type="email" id="email" placeholder="nama@email.com" required autocomplete="email"/>
+    <!-- LOGIN PANEL -->
+    <div class="panel active" id="panel-login">
+      <h2>Masuk ke akun</h2>
+      <p class="subtitle">Pantau greenhouse kamu secara real-time</p>
 
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="Password" required autocomplete="current-password"/>
+      <form id="loginForm">
+        <label for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" placeholder="nama@email.com" required autocomplete="email"/>
 
-      <button type="submit" class="btn-login" id="loginBtn">Masuk</button>
-      <div class="error-msg" id="errorMsg"></div>
-    </form>
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Password" required autocomplete="current-password"/>
+
+        <a class="forgot-link" onclick="switchTab('forgot')">Lupa password?</a>
+
+        <button type="submit" class="btn-primary" id="loginBtn">Masuk</button>
+        <div class="alert alert-error" id="loginError"></div>
+      </form>
+
+      <div class="switch-text">Belum punya akun? <a onclick="switchTab('register')">Daftar sekarang</a></div>
+    </div>
+
+    <!-- REGISTER PANEL -->
+    <div class="panel" id="panel-register">
+      <h2>Buat akun baru</h2>
+      <p class="subtitle">Mulai pantau greenhouse kamu hari ini</p>
+
+      <form id="registerForm">
+        <label for="registerName">Nama Lengkap</label>
+        <input type="text" id="registerName" placeholder="Nama kamu" required/>
+
+        <label for="registerEmail">Email</label>
+        <input type="email" id="registerEmail" placeholder="nama@email.com" required autocomplete="email"/>
+
+        <label for="registerPassword">Password</label>
+        <input type="password" id="registerPassword" placeholder="Minimal 6 karakter" required autocomplete="new-password"/>
+
+        <label for="registerConfirm">Konfirmasi Password</label>
+        <input type="password" id="registerConfirm" placeholder="Ulangi password" required autocomplete="new-password"/>
+
+        <button type="submit" class="btn-primary" id="registerBtn">Daftar</button>
+        <div class="alert alert-error" id="registerError"></div>
+        <div class="alert alert-success" id="registerSuccess"></div>
+      </form>
+
+      <div class="switch-text">Sudah punya akun? <a onclick="switchTab('login')">Masuk</a></div>
+    </div>
+
+    <!-- FORGOT PASSWORD PANEL -->
+    <div class="panel" id="panel-forgot">
+      <h2>Reset Password</h2>
+      <p class="subtitle">Masukkan email kamu, kami akan kirimkan link reset password</p>
+
+      <form id="forgotForm">
+        <label for="forgotEmail">Email</label>
+        <input type="email" id="forgotEmail" placeholder="nama@email.com" required autocomplete="email"/>
+
+        <button type="submit" class="btn-primary" id="forgotBtn">Kirim Link Reset</button>
+        <div class="alert alert-error" id="forgotError"></div>
+        <div class="alert alert-success" id="forgotSuccess"></div>
+      </form>
+
+      <div class="switch-text"><a onclick="switchTab('login')">← Kembali ke halaman masuk</a></div>
+    </div>
 
     <div class="footer">© 2026 FloraSync Lite · Binus University</div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      sendPasswordResetEmail,
+      updateProfile,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import { firebaseConfig } from "./firebase-config.js";
 
     const app  = initializeApp(firebaseConfig);
@@ -173,33 +310,120 @@
       if (user) window.location.href = "dashboard.html";
     });
 
-    document.getElementById("loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn      = document.getElementById("loginBtn");
-      const errorMsg = document.getElementById("errorMsg");
-      const email    = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
+    // Tab switching
+    window.switchTab = function(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+      document.getElementById(`panel-${tab}`).classList.add('active');
+    };
 
-      btn.disabled = true;
-      btn.innerHTML = '<div class="spinner"></div> Memproses...';
-      errorMsg.style.display = "none";
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    function setLoading(btn, loading, defaultText) {
+      if (loading) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Memproses...';
+      } else {
+        btn.disabled = false;
+        btn.textContent = defaultText;
+      }
+    }
+
+    function showAlert(el, msg, type = 'error') {
+      el.className = `alert alert-${type}`;
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideAlert(el) { el.style.display = 'none'; }
+
+    function firebaseError(code) {
+      const map = {
+        'auth/invalid-credential':      'Email atau password salah.',
+        'auth/wrong-password':          'Email atau password salah.',
+        'auth/user-not-found':          'Email tidak terdaftar.',
+        'auth/email-already-in-use':    'Email sudah digunakan akun lain.',
+        'auth/weak-password':           'Password terlalu lemah, minimal 6 karakter.',
+        'auth/invalid-email':           'Format email tidak valid.',
+        'auth/too-many-requests':       'Terlalu banyak percobaan. Tunggu sebentar.',
+        'auth/network-request-failed':  'Tidak ada koneksi internet.',
+      };
+      return map[code] || 'Terjadi kesalahan. Coba lagi.';
+    }
+
+    // LOGIN
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn   = document.getElementById('loginBtn');
+      const errEl = document.getElementById('loginError');
+      hideAlert(errEl);
+      setLoading(btn, true);
 
       try {
-        await signInWithEmailAndPassword(auth, email, password);
-        window.location.href = "dashboard.html";
+        await signInWithEmailAndPassword(
+          auth,
+          document.getElementById('loginEmail').value.trim(),
+          document.getElementById('loginPassword').value
+        );
+        window.location.href = 'dashboard.html';
       } catch (err) {
-        let msg = "Gagal masuk. Coba lagi.";
-        if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
-          msg = "Email atau password salah.";
-        } else if (err.code === "auth/too-many-requests") {
-          msg = "Terlalu banyak percobaan. Tunggu sebentar.";
-        } else if (err.code === "auth/network-request-failed") {
-          msg = "Tidak ada koneksi internet.";
-        }
-        errorMsg.textContent  = msg;
-        errorMsg.style.display = "block";
-        btn.disabled = false;
-        btn.textContent = "Masuk";
+        showAlert(errEl, firebaseError(err.code));
+        setLoading(btn, false, 'Masuk');
+      }
+    });
+
+    // REGISTER
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn     = document.getElementById('registerBtn');
+      const errEl   = document.getElementById('registerError');
+      const succEl  = document.getElementById('registerSuccess');
+      hideAlert(errEl); hideAlert(succEl);
+
+      const name    = document.getElementById('registerName').value.trim();
+      const email   = document.getElementById('registerEmail').value.trim();
+      const pass    = document.getElementById('registerPassword').value;
+      const confirm = document.getElementById('registerConfirm').value;
+
+      if (pass !== confirm) {
+        showAlert(errEl, 'Password dan konfirmasi tidak cocok.');
+        return;
+      }
+
+      setLoading(btn, true);
+
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email, pass);
+        await updateProfile(cred.user, { displayName: name });
+        showAlert(succEl, 'Akun berhasil dibuat! Mengalihkan ke dashboard...', 'success');
+        setTimeout(() => window.location.href = 'dashboard.html', 1500);
+      } catch (err) {
+        showAlert(errEl, firebaseError(err.code));
+        setLoading(btn, false, 'Daftar');
+      }
+    });
+
+    // FORGOT PASSWORD
+    document.getElementById('forgotForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn    = document.getElementById('forgotBtn');
+      const errEl  = document.getElementById('forgotError');
+      const succEl = document.getElementById('forgotSuccess');
+      hideAlert(errEl); hideAlert(succEl);
+
+      const email = document.getElementById('forgotEmail').value.trim();
+      setLoading(btn, true);
+
+      try {
+        await sendPasswordResetEmail(auth, email);
+        showAlert(succEl, 'Link reset password sudah dikirim ke email kamu. Cek inbox atau folder spam.', 'success');
+        setLoading(btn, false, 'Kirim Link Reset');
+      } catch (err) {
+        showAlert(errEl, firebaseError(err.code));
+        setLoading(btn, false, 'Kirim Link Reset');
       }
     });
   </script>
