@@ -4,8 +4,10 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FloraSync Lite — Data History</title>
-  <style id="sharedStyle"></style>
+  <script>setTimeout(function(){ document.body.style.visibility = "visible"; }, 4000);</script>
+  <link rel="stylesheet" href="shared.css"/>
   <style>
+    body { visibility: hidden; }
     .record-info {
       font-size: 12px;
       color: var(--gray-400);
@@ -62,11 +64,11 @@
   </main>
 
   <script type="module">
-    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
     import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    document.getElementById("sharedStyle").textContent = sharedCSS;
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("history");
+    document.body.style.visibility = "visible";
 
     // Default range: 7 hari terakhir
     const today   = new Date();

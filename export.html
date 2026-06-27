@@ -4,10 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FloraSync Lite — Export Data</title>
+  <script>setTimeout(function(){ document.body.style.visibility = "visible"; }, 4000);</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <style id="sharedStyle"></style>
+  <link rel="stylesheet" href="shared.css"/>
   <style>
+    body { visibility: hidden; }
     .format-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -153,11 +155,11 @@
   </main>
 
   <script type="module">
-    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
     import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    document.getElementById("sharedStyle").textContent = sharedCSS;
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("export");
+    document.body.style.visibility = "visible";
 
     // Default: 7 hari terakhir
     const today   = new Date();

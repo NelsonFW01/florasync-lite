@@ -4,9 +4,11 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FloraSync Lite — Monitoring</title>
+  <script>setTimeout(function(){ document.body.style.visibility = "visible"; }, 4000);</script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <style id="sharedStyle"></style>
+  <link rel="stylesheet" href="shared.css"/>
   <style>
+    body { visibility: hidden; }
     .sensor-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -145,11 +147,11 @@
   </main>
 
   <script type="module">
-    import { sharedCSS, buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
     import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    document.getElementById("sharedStyle").textContent = sharedCSS;
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("monitoring");
+    document.body.style.visibility = "visible";
 
     const MAX = 20;
     const timeLabels = [];
