@@ -1,18 +1,10 @@
-/*
- * FloraSync Lite — ESP32 Firmware
- * Binus University 2026
- * 
- * Library yang diperlukan (install via Arduino Library Manager):
- * - Firebase ESP Client by Mobizt
- * - DHT sensor library by Adafruit
- * - Adafruit Unified Sensor by Adafruit
- */
-
 #include <DHT.h>
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
+#include <esp_task_wdt.h>   // watchdog timer, restart otomatis kalau loop() macet
+#include "esp_system.h"     // untuk esp_reset_reason()
 
 // ========== PIN DEFINITIONS ==========
 #define DHTPIN        4
@@ -21,14 +13,14 @@
 #define LDR_PIN       34
 #define TRIG_PIN      18
 #define ECHO_PIN      19
-#define RELAY_PUMP    23
-#define RELAY_FAN     22
+#define RELAY_PUMP    22
+#define RELAY_FAN     23
 
-// ========== GANTI DENGAN WIFI MILIK KALIAN ==========
-#define WIFI_SSID         "NAMA_WIFI_KALIAN"
-#define WIFI_PASSWORD     "PASSWORD_WIFI_KALIAN"
-#define API_KEY           "FIREBASE_API_KEY_KALIAN"
-#define DATABASE_URL      "FIREBASE_DATABASE_URL_KALIAN"
+// ========== GANTI DENGAN MILIK KALIAN ==========
+#define WIFI_SSID         "Galaxy A32C8E6"
+#define WIFI_PASSWORD     "nelsonfw12345"
+#define API_KEY      "AIzaSyAP5lGx8vTPw0pcTyxdx1kBtavbDpVmflE"
+#define DATABASE_URL "https://florasync-lite-default-rtdb.asia-southeast1.firebasedatabase.app"
 // ================================================
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -36,21 +28,30 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// ========== PUMP CONTROL ==========
-const int     SOIL_THRESHOLD   = 2200;   // ADC; semakin kecil = makin kering
-const unsigned long PUMP_DURATION  = 10000;  // ms (10 detik)
-const unsigned long PUMP_COOLDOWN  = 60000;  // ms (1 menit)
-const unsigned long FAN_AFTER_PUMP = 90000;  // ms (1.5 menit pasca siram)
+// ========== PUMP CONTROL (dengan HYSTERESIS) ==========
+const int SOIL_THRESHOLD_ON  = 2000;   // tanah kering → nyalakan pompa
+const int SOIL_THRESHOLD_OFF = 2300;   // tanah basah → matikan pompa
+const unsigned long PUMP_DURATION  = 10000;  // 10 detik
+const unsigned long PUMP_COOLDOWN  = 60000;  // 1 menit
+const unsigned long FAN_AFTER_PUMP = 90000;  // 1.5 menit
 
 bool pumpActive    = false;
 bool hasEverPumped = false;
 unsigned long pumpStart = 0;
 unsigned long pumpStop  = 0;
 
+// ========== FAN CONTROL (dengan HYSTERESIS) ==========
+const float TEMP_FAN_ON   = 31.0;   // kipas ON jika suhu > 31°C
+const float TEMP_FAN_OFF  = 29.0;   // kipas OFF jika suhu < 29°C
+const float HUM_FAN_ON    = 82.0;   // kipas ON jika RH > 82%
+const float HUM_FAN_OFF   = 78.0;   // kipas OFF jika RH < 78%
+bool fanState = false;
+
 // ========== TIMING ==========
-const unsigned long SENSOR_INTERVAL  = 5000;   // baca sensor tiap 5 detik
-const unsigned long FIREBASE_INTERVAL = 5000;  // kirim ke Firebase tiap 5 detik
-const unsigned long HISTORY_INTERVAL  = 60000; // simpan history tiap 1 menit
+const unsigned long SENSOR_INTERVAL   = 5000;
+const unsigned long FIREBASE_INTERVAL = 5000;
+const unsigned long HISTORY_INTERVAL  = 60000;
+const unsigned long RELAY_STAGGER_MS  = 150;
 
 unsigned long lastSensor  = 0;
 unsigned long lastFirebase = 0;
@@ -58,15 +59,110 @@ unsigned long lastHistory  = 0;
 
 bool signupOK = false;
 
-// ========== SENSOR VALUES ==========
+// ========== AKURASI SENSOR ==========
+#define SOIL_SAMPLES        10   // jumlah sampel ADC soil per pembacaan
+#define LDR_SAMPLES         10   // jumlah sampel ADC LDR per pembacaan
+#define ULTRASONIC_SAMPLES  5    // jumlah tembakan HC-SR04 per pembacaan
+
+// ========== SENSOR VALUES (dengan fallback) ==========
 float temperature = 0;
 float humidity    = 0;
 int   soilValue   = 0;
 int   ldrValue    = 0;
-float distance    = 0;
+float distance    = -1;
+
+// Nilai terakhir yang valid dari DHT22
+float lastValidTemp = 0;
+float lastValidHum  = 0;
+
+// ========== PROTEKSI DRY-RUN POMPA / AIR HABIS ==========
+// Sensor HC-SR04 dipasang di ATAS tandon menghadap ke bawah dan mengukur
+// jarak ke PERMUKAAN AIR (bukan tinggi air dari dasar), jadi jarak makin
+// JAUH = air makin SEDIKIT.
+// WATER_LEVEL_EMPTY_CM = jarak sensor ke dasar tandon saat kosong = 18,5 cm.
+// WATER_LEVEL_OK_CM = jarak sensor ke air saat tinggi air 6 cm dari dasar
+// (batas aman yang ditentukan) -> 18,5 - 6 = 12,5 cm.
+// Kalau batas amannya mau diganti nanti: WATER_LEVEL_OK_CM =
+// WATER_LEVEL_EMPTY_CM dikurangi tinggi air minimum yang diinginkan (cm).
+const float WATER_LEVEL_EMPTY_CM = 18.5;
+const float WATER_LEVEL_OK_CM    = 12.5;
+const int   MAX_ULTRASONIC_FAULT_TRUST = 3; // gagal berturut2 >= ini -> data lama tak dipercaya lagi
+
+bool  waterEmpty        = true;  // default aman saat boot: anggap habis sampai terbukti ada air
+float lastValidDistance = -1;
+
+// ========== ERROR COUNTER UNTUK RESTART ==========
+int wifiFailCount = 0;
+int firebaseFailCount = 0;
+const int MAX_WIFI_FAIL = 4;
+const int MAX_FB_FAIL   = 10;
+
+// ========== COUNTER DIAGNOSTIK ==========
+int dhtFaultCount        = 0;
+int ultrasonicFaultCount = 0;
+int relayMismatchCount   = 0;
+
+unsigned long pumpCycleCount      = 0;
+unsigned long fanCycleCount       = 0;
+unsigned long pumpTotalRuntimeMs  = 0;
+unsigned long fanTotalRuntimeMs   = 0;
+unsigned long fanOnStart          = 0;
+unsigned long pumpDryRunStopCount = 0; // berapa kali pompa dipaksa OFF karena air habis
+
+// ---------- Fungsi restart aman ----------
+void safeRestart() {
+  Serial.println("[SYSTEM] Restart ESP32...");
+  delay(1000);
+  ESP.restart();
+}
+
+// ---------- Cetak alasan restart terakhir ----------
+void printResetReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.print("[BOOT] Alasan restart terakhir: ");
+  switch (reason) {
+    case ESP_RST_POWERON:
+      Serial.println("Power-on normal (colok listrik / reset manual)");
+      break;
+    case ESP_RST_EXT:
+      Serial.println("Reset via pin eksternal");
+      break;
+    case ESP_RST_SW:
+      Serial.println("Software reset (ESP.restart() dipanggil oleh kode)");
+      break;
+    case ESP_RST_PANIC:
+      Serial.println("PANIC/crash pada kode (exception)");
+      break;
+    case ESP_RST_INT_WDT:
+      Serial.println("Interrupt watchdog timeout");
+      break;
+    case ESP_RST_TASK_WDT:
+      Serial.println("Task watchdog timeout (loop() sempat macet)");
+      break;
+    case ESP_RST_WDT:
+      Serial.println("Watchdog lain timeout");
+      break;
+    case ESP_RST_BROWNOUT:
+      Serial.println("!!! BROWNOUT — tegangan sempat drop di bawah batas aman !!!");
+      Serial.println("     -> Kemungkinan besar power supply kurang kuat saat");
+      Serial.println("        pompa & kipas (atau bebannya) narik arus bersamaan.");
+      break;
+    case ESP_RST_DEEPSLEEP:
+      Serial.println("Bangun dari deep sleep");
+      break;
+    default:
+      Serial.print("Lainnya/tidak diketahui (kode=");
+      Serial.print((int)reason);
+      Serial.println(")");
+      break;
+  }
+}
 
 void setup() {
   Serial.begin(115200);
+  delay(300);
+  printResetReason();
+
   dht.begin();
 
   pinMode(SOIL_PIN, INPUT);
@@ -76,23 +172,29 @@ void setup() {
   pinMode(RELAY_PUMP, OUTPUT);
   pinMode(RELAY_FAN,  OUTPUT);
 
-  // Relay module active LOW: HIGH = OFF saat init
-  digitalWrite(RELAY_PUMP, HIGH);
-  digitalWrite(RELAY_FAN,  HIGH);
+  // Kunci resolusi & attenuation ADC secara eksplisit supaya pembacaan
+  // soil/LDR konsisten, tidak bergantung default core Arduino-ESP32.
+  analogReadResolution(12);        // 0-4095
+  analogSetAttenuation(ADC_11db);  // rentang input ~0-3.3V (sesuai devkit umum)
+
+  digitalWrite(RELAY_PUMP, HIGH); // OFF
+  digitalWrite(RELAY_FAN,  HIGH); // OFF
 
   // ========== WIFI CONNECT ==========
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Menghubungkan WiFi");
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 30) {
+  while (WiFi.status() != WL_CONNECTED && retries < 40) {
     Serial.print(".");
     delay(500);
     retries++;
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi terhubung: " + WiFi.localIP().toString());
+    wifiFailCount = 0;
   } else {
-    Serial.println("\nGagal konek WiFi! Cek SSID/Password.");
+    Serial.println("\nGagal konek WiFi! Restart...");
+    safeRestart();
   }
 
   // ========== FIREBASE INIT ==========
@@ -105,157 +207,375 @@ void setup() {
   } else {
     Serial.printf("Firebase signup error: %s\n",
       config.signer.signupError.message.c_str());
+    safeRestart();
   }
 
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  Serial.println("FloraSync Lite siap!");
+  // ========== AKTIFKAN TASK WATCHDOG ==========
+  esp_task_wdt_config_t twdt_config = {
+    .timeout_ms = 600000,    // 10 menit timeout
+    .trigger_panic = true    // restart otomatis jika hang
+  };
+  esp_task_wdt_init(&twdt_config);
+  esp_task_wdt_add(NULL);
+
+  Serial.println("FloraSync Lite siap.");
   Serial.println("===================");
 }
 
-// ========== READ ALL SENSORS ==========
-void readSensors() {
-  // DHT22
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  if (!isnan(h) && !isnan(t)) {
-    humidity    = h;
-    temperature = t;
-  } else {
-    Serial.println("[DHT22] Error baca sensor!");
+// ========== HELPER: SOIL MOISTURE (trimmed mean) ==========
+int readSoilAveraged() {
+  int samples[SOIL_SAMPLES];
+  for (int i = 0; i < SOIL_SAMPLES; i++) {
+    samples[i] = analogRead(SOIL_PIN);
+    delayMicroseconds(500);
   }
-
-  // Soil moisture (capacitive)
-  soilValue = analogRead(SOIL_PIN);
-
-  // LDR
-  ldrValue = analogRead(LDR_PIN);
-
-  // Ultrasonic HC-SR04
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  long dur = pulseIn(ECHO_PIN, HIGH, 30000); // timeout 30ms agar tidak hang
-  if (dur == 0) {
-    Serial.println("[HC-SR04] Tidak ada echo, cek kabel.");
-    distance = -1;
-  } else {
-    distance = dur * 0.034 / 2.0;
+  // insertion sort (aman & cukup cepat untuk N sekecil ini)
+  for (int i = 1; i < SOIL_SAMPLES; i++) {
+    int key = samples[i];
+    int j = i - 1;
+    while (j >= 0 && samples[j] > key) {
+      samples[j + 1] = samples[j];
+      j--;
+    }
+    samples[j + 1] = key;
   }
-
-  // Print ke Serial Monitor
-  Serial.println("--- Sensor Reading ---");
-  Serial.printf("Suhu: %.1f °C | Kelembaban: %.1f %%\n", temperature, humidity);
-  Serial.printf("Soil ADC: %d | LDR ADC: %d\n", soilValue, ldrValue);
-  Serial.printf("Level Air: %.1f cm\n", distance);
+  // buang nilai tertinggi & terendah, rata-ratakan sisanya
+  long sum = 0;
+  int count = 0;
+  for (int i = 1; i < SOIL_SAMPLES - 1; i++) {
+    sum += samples[i];
+    count++;
+  }
+  return (int)(sum / count);
 }
 
-// ========== ACTUATOR CONTROL ==========
+// ========== HELPER: LDR (trimmed mean) ==========
+int readLdrAveraged() {
+  int samples[LDR_SAMPLES];
+  for (int i = 0; i < LDR_SAMPLES; i++) {
+    samples[i] = analogRead(LDR_PIN);
+    delayMicroseconds(500);
+  }
+  for (int i = 1; i < LDR_SAMPLES; i++) {
+    int key = samples[i];
+    int j = i - 1;
+    while (j >= 0 && samples[j] > key) {
+      samples[j + 1] = samples[j];
+      j--;
+    }
+    samples[j + 1] = key;
+  }
+  long sum = 0;
+  int count = 0;
+  for (int i = 1; i < LDR_SAMPLES - 1; i++) {
+    sum += samples[i];
+    count++;
+  }
+  return (int)(sum / count);
+}
+
+// ========== HELPER: HC-SR04 (multi-sample + median filter) ==========
+float readUltrasonicFiltered() {
+  float validSamples[ULTRASONIC_SAMPLES];
+  int validCount = 0;
+
+  // Cepat rambat suara berubah ~0,6 m/s tiap 1°C. Pakai suhu DHT22
+  // terkini (bukan konstanta tetap) supaya konversi durasi pantulan ke
+  // jarak lebih akurat — penting karena rentang tandonnya cuma ~18 cm.
+  float soundSpeedCmPerUs = (331.3 + 0.606 * temperature) / 10000.0;
+
+  for (int i = 0; i < ULTRASONIC_SAMPLES; i++) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    long dur = pulseIn(ECHO_PIN, HIGH, 30000);
+    if (dur > 0) {
+      float d = dur * soundSpeedCmPerUs / 2.0;
+      // Rentang wajar HC-SR04 ~2-400 cm; di luar itu kemungkinan noise/echo salah.
+      if (d >= 2.0 && d <= 400.0) {
+        validSamples[validCount++] = d;
+      }
+    }
+    delay(10); // cegah tembakan berikutnya bentrok dengan echo sebelumnya
+  }
+
+  if (validCount == 0) {
+    ultrasonicFaultCount++;
+    Serial.println("[HC-SR04] Semua sampel gagal/di luar rentang wajar");
+    return -1;
+  }
+
+  for (int i = 1; i < validCount; i++) {
+    float key = validSamples[i];
+    int j = i - 1;
+    while (j >= 0 && validSamples[j] > key) {
+      validSamples[j + 1] = validSamples[j];
+      j--;
+    }
+    validSamples[j + 1] = key;
+  }
+
+  ultrasonicFaultCount = 0;
+  return validSamples[validCount / 2]; // median -> tahan terhadap outlier
+}
+
+// ========== HELPER: TULIS RELAY + VERIFIKASI ==========
+// CATATAN: ini memverifikasi bahwa GPIO ESP32 benar-benar berubah level,
+// BUKAN memverifikasi kondisi fisik pompa/kipas (tidak ada sensor arus/
+// feedback fisik di rangkaian ini). Untuk itu perlu tambahan hardware
+// (mis. sensor arus ACS712 atau kontak feedback dari modul relay).
+bool writeRelayVerified(int pin, bool activate) {
+  int targetLevel = activate ? LOW : HIGH;
+  digitalWrite(pin, targetLevel);
+  delay(5);
+  if (digitalRead(pin) != targetLevel) {
+    digitalWrite(pin, targetLevel); // retry sekali
+    delay(5);
+    if (digitalRead(pin) != targetLevel) {
+      relayMismatchCount++;
+      Serial.printf("[RELAY] WARNING: pin %d gagal berubah ke level %d\n", pin, targetLevel);
+      return false;
+    }
+  }
+  return true;
+}
+
+// ========== HELPER: STATUS AIR HABIS UNTUK PROTEKSI DRY-RUN ==========
+// Update variabel global 'waterEmpty' dari pembacaan HC-SR04 terbaru (distance).
+// - Hysteresis (mirip soil/suhu/RH): WATER_LEVEL_EMPTY_CM vs WATER_LEVEL_OK_CM.
+// - Fallback ke lastValidDistance kalau pembacaan saat ini gagal (mirip DHT22).
+// - Kalau gagal berturut-turut >= MAX_ULTRASONIC_FAULT_TRUST, data lama
+//   dianggap tidak bisa dipercaya lagi -> fail-safe, anggap air HABIS supaya
+//   pompa tidak jalan berdasarkan data yang sudah basi.
+void updateWaterEmptyStatus() {
+  if (distance > 0) {
+    lastValidDistance = distance;
+  }
+
+  if (ultrasonicFaultCount >= MAX_ULTRASONIC_FAULT_TRUST) {
+    waterEmpty = true;
+    Serial.println("[WATER] Sensor gagal berturut-turut, data basi -> asumsi HABIS (fail-safe)");
+    return;
+  }
+
+  if (lastValidDistance <= 0) {
+    // Belum pernah ada pembacaan valid sejak boot.
+    waterEmpty = true;
+    return;
+  }
+
+  if (lastValidDistance >= WATER_LEVEL_EMPTY_CM) {
+    waterEmpty = true;
+  } else if (lastValidDistance <= WATER_LEVEL_OK_CM) {
+    waterEmpty = false;
+  }
+  // else: zona hysteresis tengah -> status sebelumnya dipertahankan (sengaja)
+}
+
+// ========== BACA SEMUA SENSOR (dengan retry & filter) ==========
+void readSensors() {
+  // DHT22 — coba 3 kali, rata-ratakan SEMUA pembacaan yang valid (bukan cuma
+  // pakai percobaan pertama yang sukses) supaya lebih tahan jitter sensor.
+  float hSum = 0, tSum = 0;
+  int validReads = 0;
+  for (int i = 0; i < 3; i++) {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+    if (!isnan(h) && !isnan(t)) {
+      hSum += h;
+      tSum += t;
+      validReads++;
+    }
+    delay(100);
+  }
+
+  if (validReads > 0) {
+    temperature   = tSum / validReads;
+    humidity      = hSum / validReads;
+    lastValidTemp = temperature;
+    lastValidHum  = humidity;
+    dhtFaultCount = 0;
+    Serial.printf("[DHT22] OK (%d/3 valid, dirata-rata)\n", validReads);
+  } else {
+    temperature = lastValidTemp;
+    humidity    = lastValidHum;
+    dhtFaultCount++;
+    Serial.println("[DHT22] Error, pakai data terakhir");
+  }
+
+  soilValue = readSoilAveraged();
+  ldrValue  = readLdrAveraged();
+  distance  = readUltrasonicFiltered();
+
+  updateWaterEmptyStatus();
+
+  Serial.println("--- Sensor Reading ---");
+  Serial.printf("Suhu: %.1f °C | Kelembaban: %.1f %%\n", temperature, humidity);
+  Serial.printf("Soil ADC (avg): %d | LDR ADC (avg): %d\n", soilValue, ldrValue);
+  Serial.printf("Level Air (median): %.1f cm | Status: %s\n", distance, waterEmpty ? "HABIS/KRITIS" : "Cukup");
+
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiFailCount++;
+    Serial.printf("[WiFi] Gagal (%d/%d)\n", wifiFailCount, MAX_WIFI_FAIL);
+    if (wifiFailCount >= MAX_WIFI_FAIL) {
+      safeRestart();
+    }
+  } else {
+    wifiFailCount = 0;
+  }
+}
+
+// ========== ACTUATOR CONTROL (HYSTERESIS + STAGGER + VERIFIKASI + COUNTER) ==========
 void controlActuators() {
   unsigned long now = millis();
 
-  // --- Cek timer pompa ---
-  if (pumpActive && (now - pumpStart >= PUMP_DURATION)) {
-    digitalWrite(RELAY_PUMP, HIGH); // OFF
+  bool pumpWasActive = pumpActive;
+  bool fanWasActive  = fanState;
+
+  // --- Proteksi dry-run: air habis SAAT pompa nyala -> paksa OFF sekarang
+  // juga, jangan tunggu PUMP_DURATION selesai. ---
+  if (pumpActive && waterEmpty) {
+    pumpActive     = false;
+    hasEverPumped  = true;
+    pumpStop       = now;
+    pumpDryRunStopCount++;
+    Serial.println("[PUMP] OFF — AIR HABIS! Proteksi dry-run, paksa berhenti sebelum timer selesai.");
+  }
+  // --- Status pompa (logika hysteresis) ---
+  else if (pumpActive && (now - pumpStart >= PUMP_DURATION)) {
     pumpActive     = false;
     hasEverPumped  = true;
     pumpStop       = now;
     Serial.println("[PUMP] OFF — timer 10 detik selesai");
   }
 
-  // --- Logika pompa ---
   bool cooldownActive = hasEverPumped && !pumpActive &&
                         (now - pumpStop < PUMP_COOLDOWN);
 
-  if (soilValue < SOIL_THRESHOLD) {
-    if (pumpActive) {
-      Serial.println("[PUMP] Sedang menyiram...");
-    } else if (cooldownActive) {
-      unsigned long sisa = (PUMP_COOLDOWN - (now - pumpStop)) / 1000;
-      Serial.printf("[PUMP] Cooldown aktif, tunggu %lu detik\n", sisa);
-    } else {
-      digitalWrite(RELAY_PUMP, LOW); // ON
-      pumpActive = true;
-      pumpStart  = now;
-      Serial.println("[PUMP] ON — tanah kering, mulai menyiram 10 detik");
-    }
-  } else {
-    if (pumpActive) {
-      digitalWrite(RELAY_PUMP, HIGH); // OFF lebih awal
-      pumpActive    = false;
-      hasEverPumped = true;
-      pumpStop      = now;
-      Serial.println("[PUMP] OFF — tanah sudah basah");
-    } else {
-      Serial.println("[PUMP] OFF — tanah cukup basah");
-    }
+  // Syarat tambahan !waterEmpty: pompa tidak boleh menyala kalau air
+  // tandon terdeteksi habis, walaupun tanah kering.
+  if (soilValue < SOIL_THRESHOLD_ON && !cooldownActive && !pumpActive && !waterEmpty) {
+    pumpActive = true;
+    pumpStart  = now;
+    Serial.println("[PUMP] ON — tanah kering (hysteresis ON)");
+  } else if (soilValue < SOIL_THRESHOLD_ON && !cooldownActive && !pumpActive && waterEmpty) {
+    Serial.println("[PUMP] Tetap OFF — tanah kering TAPI air tandon habis/kritis!");
+  } else if (soilValue > SOIL_THRESHOLD_OFF && pumpActive) {
+    pumpActive    = false;
+    hasEverPumped = true;
+    pumpStop      = now;
+    Serial.println("[PUMP] OFF — tanah sudah basah (hysteresis OFF)");
   }
 
-  // --- Logika kipas ---
+  // --- Status kipas (logika hysteresis) ---
   bool pascaSiram = hasEverPumped && !pumpActive &&
                     (now - pumpStop < FAN_AFTER_PUMP);
 
-  bool fanShouldOn = (!isnan(temperature) && temperature > 30.0) ||
-                     (!isnan(humidity)    && humidity    > 80.0) ||
-                     pascaSiram;
+  bool tempHigh = temperature > TEMP_FAN_ON;
+  bool humHigh  = humidity > HUM_FAN_ON;
+  bool tempLow  = temperature < TEMP_FAN_OFF;
+  bool humLow   = humidity < HUM_FAN_OFF;
 
-  if (fanShouldOn) {
-    digitalWrite(RELAY_FAN, LOW); // ON
-    Serial.println("[FAN] ON");
-  } else {
-    digitalWrite(RELAY_FAN, HIGH); // OFF
-    Serial.println("[FAN] OFF");
+  if (pascaSiram || tempHigh || humHigh) {
+    fanState = true;
+  } else if (tempLow && humLow) {
+    fanState = false;
+  }
+  // else: zona tengah -> tahan state sebelumnya
+
+  if (fanState != fanWasActive) {
+    Serial.println(fanState ? "[FAN] ON" : "[FAN] OFF");
+  }
+
+  bool pumpChanged = (pumpActive != pumpWasActive);
+  bool fanChanged  = (fanState   != fanWasActive);
+
+  // --- Tulis ke pin fisik (verified) + update counter diagnostik ---
+  if (pumpChanged) {
+    writeRelayVerified(RELAY_PUMP, pumpActive);
+    if (pumpActive) {
+      pumpCycleCount++;
+    } else {
+      // Baru saja transisi ke OFF -> tambahkan durasi siklus ini ke total runtime
+      pumpTotalRuntimeMs += (pumpStop - pumpStart);
+    }
+  }
+
+  if (pumpChanged && fanChanged) {
+    delay(RELAY_STAGGER_MS); // jeda antar-switch supaya 2 relay tidak aktif persis bersamaan
+  }
+
+  if (fanChanged) {
+    if (fanState) {
+      fanCycleCount++;
+      fanOnStart = now;
+    } else {
+      fanTotalRuntimeMs += (now - fanOnStart);
+    }
+    writeRelayVerified(RELAY_FAN, fanState);
   }
 
   Serial.println();
 }
 
-// ========== SEND TO FIREBASE ==========
+// ========== SEND TO FIREBASE (dengan restart jika error) ==========
 void sendToFirebase() {
   if (!signupOK || !Firebase.ready()) {
-    Serial.println("[Firebase] Tidak siap, skip kirim.");
-    return;
-  }
-  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Firebase] Tidak siap");
+    firebaseFailCount++;
+  } else if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[WiFi] Terputus! Mencoba reconnect...");
     WiFi.reconnect();
-    return;
+    firebaseFailCount++;
+  } else {
+    bool pumpStatus = pumpActive;
+    bool fanStatus  = fanState;
+
+    bool ok1 = Firebase.RTDB.setFloat(&fbdo, "/sensor/temperature", temperature);
+    bool ok2 = Firebase.RTDB.setFloat(&fbdo, "/sensor/humidity", humidity);
+    bool ok3 = Firebase.RTDB.setInt(&fbdo, "/sensor/soilMoisture", soilValue);
+    bool ok4 = Firebase.RTDB.setInt(&fbdo, "/sensor/ldrValue", ldrValue);
+    bool ok5 = Firebase.RTDB.setFloat(&fbdo, "/sensor/waterLevel", distance);
+    bool ok6 = Firebase.RTDB.setBool(&fbdo, "/actuator/pump", pumpStatus);
+    bool ok7 = Firebase.RTDB.setBool(&fbdo, "/actuator/fan", fanStatus);
+    bool ok8 = Firebase.RTDB.setBool(&fbdo, "/sensor/waterEmpty", waterEmpty);
+
+    if (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8) {
+      Serial.println("[Firebase] Data sensor terkirim.");
+      firebaseFailCount = 0;
+    } else {
+      Serial.println("[Firebase] Gagal kirim: " + fbdo.errorReason());
+      firebaseFailCount++;
+    }
+
+    // Kirim data diagnostik, best-effort — tidak memengaruhi firebaseFailCount/restart di atas.
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/dhtFaultCount", dhtFaultCount);
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/ultrasonicFaultCount", ultrasonicFaultCount);
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/relayMismatchCount", relayMismatchCount);
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/pumpCycleCount", (int)pumpCycleCount);
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/fanCycleCount", (int)fanCycleCount);
+    Firebase.RTDB.setFloat(&fbdo, "/diagnostic/pumpTotalRuntimeMs", (float)pumpTotalRuntimeMs);
+    Firebase.RTDB.setFloat(&fbdo, "/diagnostic/fanTotalRuntimeMs", (float)fanTotalRuntimeMs);
+    Firebase.RTDB.setInt(&fbdo, "/diagnostic/pumpDryRunStopCount", (int)pumpDryRunStopCount);
   }
 
-  bool pumpStatus = (digitalRead(RELAY_PUMP) == LOW);
-  bool fanStatus  = (digitalRead(RELAY_FAN)  == LOW);
-
-  // Tulis ke /sensor (data real-time terbaru)
-  Firebase.RTDB.setFloat(&fbdo,  "/sensor/temperature", temperature);
-  Firebase.RTDB.setFloat(&fbdo,  "/sensor/humidity",    humidity);
-  Firebase.RTDB.setInt(&fbdo,    "/sensor/soilMoisture", soilValue);
-  Firebase.RTDB.setInt(&fbdo,    "/sensor/ldrValue",    ldrValue);
-  Firebase.RTDB.setFloat(&fbdo,  "/sensor/waterLevel",  distance);
-  Firebase.RTDB.setBool(&fbdo,   "/actuator/pump",      pumpStatus);
-  Firebase.RTDB.setBool(&fbdo,   "/actuator/fan",       fanStatus);
-
-  Serial.println("[Firebase] Data sensor terkirim.");
+  if (firebaseFailCount >= MAX_FB_FAIL) {
+    Serial.println("[Firebase] Terlalu banyak error, restart...");
+    safeRestart();
+  }
 }
 
-// ========== SAVE TO HISTORY ==========
-// Menyimpan snapshot ke /history/{timestamp} — dipakai oleh halaman History & Export
+// ========== SAVE TO HISTORY (dengan retry) ==========
 void saveToHistory() {
   if (!signupOK || !Firebase.ready()) return;
   if (WiFi.status() != WL_CONNECTED) return;
-
-  unsigned long ts = millis(); // gunakan millis sebagai key sementara
-  // Sebaiknya pakai timestamp Unix dari NTP di production
-  // Untuk prototipe, millis() cukup karena web akan sort berdasarkan key
-
-  String path = "/history/" + String(ts);
-
-  bool pumpStatus = (digitalRead(RELAY_PUMP) == LOW);
-  bool fanStatus  = (digitalRead(RELAY_FAN)  == LOW);
 
   FirebaseJson json;
   json.set("temperature", temperature);
@@ -263,11 +583,18 @@ void saveToHistory() {
   json.set("soilMoisture", soilValue);
   json.set("ldrValue",    ldrValue);
   json.set("waterLevel",  distance);
-  json.set("pump",        pumpStatus);
-  json.set("fan",         fanStatus);
+  json.set("waterEmpty",  waterEmpty);
+  json.set("pump",        pumpActive);
+  json.set("fan",         fanState);
+  json.set("uptimeMs",    (double)millis());
+  // Sertakan diagnostik di riwayat juga, berguna untuk analisis tren fault
+  json.set("dhtFaultCount", dhtFaultCount);
+  json.set("ultrasonicFaultCount", ultrasonicFaultCount);
+  json.set("relayMismatchCount", relayMismatchCount);
+  json.set("pumpDryRunStopCount", (int)pumpDryRunStopCount);
 
-  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
-    Serial.println("[Firebase] History tersimpan: " + path);
+  if (Firebase.RTDB.pushJSON(&fbdo, "/history", &json)) {
+    Serial.println("[Firebase] History tersimpan: /history/" + fbdo.pushName());
   } else {
     Serial.println("[Firebase] Gagal simpan history: " + fbdo.errorReason());
   }
@@ -275,22 +602,21 @@ void saveToHistory() {
 
 // ========== MAIN LOOP ==========
 void loop() {
+  esp_task_wdt_reset();
+
   unsigned long now = millis();
 
-  // Baca sensor & kontrol aktuator tiap SENSOR_INTERVAL
   if (now - lastSensor >= SENSOR_INTERVAL) {
     lastSensor = now;
     readSensors();
     controlActuators();
   }
 
-  // Kirim ke Firebase tiap FIREBASE_INTERVAL
   if (now - lastFirebase >= FIREBASE_INTERVAL) {
     lastFirebase = now;
     sendToFirebase();
   }
 
-  // Simpan history tiap HISTORY_INTERVAL
   if (now - lastHistory >= HISTORY_INTERVAL) {
     lastHistory = now;
     saveToHistory();
