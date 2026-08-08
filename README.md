@@ -159,7 +159,7 @@ florasync-lite/
 | Joshua Jonathan Fariman      | 2702233791 |
 | Nelson Ferdinand Wangsaputra | 2702228892 |
 
-**Program Studi:** Teknik Informatika<br>
+**Program Studi:** Computer Science Program<br>
 **School of Computer Science**<br>
 **Universitas Bina Nusantara — Bandung, 2026**
 
