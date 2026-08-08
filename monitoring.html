@@ -60,6 +60,10 @@
       <div class="page-subtitle">Nilai sensor terkini & tren 20 pembacaan terakhir</div>
     </div>
 
+    <div id="monStale" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:10px 16px;font-size:13px;color:#7c5800;margin-bottom:1.25rem;">
+      ⚠️ Belum ada data baru &gt; 15 detik — device mungkin offline. Nilai di bawah ini data terakhir yang tercatat.
+    </div>
+
     <!-- Sensor cards -->
     <div class="sensor-grid">
       <div class="sensor-card">
@@ -122,12 +126,14 @@
       <!-- Threshold -->
       <div class="card">
         <div class="card-title">Threshold Sistem</div>
-        <div class="threshold-row"><span>Fan ON (suhu)</span><span class="threshold-val">&gt; 30 °C</span></div>
-        <div class="threshold-row"><span>Fan ON (kelembaban)</span><span class="threshold-val">&gt; 80 %</span></div>
-        <div class="threshold-row"><span>Pump ON (tanah kering)</span><span class="threshold-val">&lt; 2200 ADC</span></div>
+        <div class="threshold-row"><span>Fan ON (suhu)</span><span class="threshold-val">&gt; 31 °C</span></div>
+        <div class="threshold-row"><span>Fan ON (kelembaban)</span><span class="threshold-val">&gt; 82 %</span></div>
+        <div class="threshold-row"><span>Pump ON (tanah kering)</span><span class="threshold-val">&lt; 2000 ADC</span></div>
         <div class="threshold-row"><span>Durasi siram</span><span class="threshold-val">10 detik</span></div>
         <div class="threshold-row"><span>Cooldown siram</span><span class="threshold-val">60 detik</span></div>
         <div class="threshold-row"><span>Fan pasca siram</span><span class="threshold-val">90 detik</span></div>
+        <div class="threshold-row"><span>Air dianggap habis</span><span class="threshold-val">&ge; 18,5 cm</span></div>
+        <div class="threshold-row"><span>Air dianggap cukup</span><span class="threshold-val">&le; 12,5 cm</span></div>
       </div>
     </div>
 
@@ -144,10 +150,14 @@
       <div class="chart-title">🌱 Kelembaban Tanah (ADC)</div>
       <canvas id="chartSoil"></canvas>
     </div>
+    <div class="chart-card">
+      <div class="chart-title">🚰 Level Air — jarak sensor ke air, cm (garis putus = batas kosong 18,5 cm)</div>
+      <canvas id="chartWater"></canvas>
+    </div>
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM } from "./shared.js";
     import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("monitoring");
@@ -158,8 +168,9 @@
     const tempArr    = [];
     const humidArr   = [];
     const soilArr    = [];
+    const waterArr   = [];
 
-    function makeChart(canvasId, label, color, dataArr) {
+    function makeChart(canvasId, label, color, dataArr, extra) {
       const ctx = document.getElementById(canvasId).getContext("2d");
       return new Chart(ctx, {
         type: "line",
@@ -175,7 +186,7 @@
             pointRadius: 3,
             pointBackgroundColor: color,
             borderWidth: 2
-          }]
+          }, ...(extra || [])]
         },
         options: {
           responsive: true,
@@ -190,18 +201,40 @@
       });
     }
 
-    let cTemp, cHumid, cSoil;
+    let cTemp, cHumid, cSoil, cWater;
+    const STALE_MS = 15000;
+    let lastSeen = 0;
 
     requireAuth(() => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
 
-      cTemp  = makeChart("chartTemp",  "Suhu °C",    "#BA7517", tempArr);
+      cTemp  = makeChart("chartTemp",  "Suhu °C",     "#BA7517", tempArr);
       cHumid = makeChart("chartHumid", "Kelembaban %","#378ADD", humidArr);
-      cSoil  = makeChart("chartSoil",  "Tanah ADC",  "#639922", soilArr);
+      cSoil  = makeChart("chartSoil",  "Tanah ADC",   "#639922", soilArr);
+      // Garis putus-putus referensi batas "kosong" (18,5 cm) di chart air,
+      // biar kelihatan seberapa dekat pembacaan sekarang ke batas itu.
+      cWater = makeChart("chartWater", "Level Air cm", "#185FA5", waterArr, [{
+        label: "Batas kosong",
+        data: timeLabels.map(() => WATER_LEVEL_EMPTY_CM),
+        borderColor: "#E24B4A",
+        borderDash: [5, 4],
+        pointRadius: 0,
+        fill: false,
+        borderWidth: 1.5
+      }]);
+
+      setInterval(() => {
+        if (lastSeen && Date.now() - lastSeen > STALE_MS) {
+          document.getElementById("monStale").style.display = "block";
+        } else {
+          document.getElementById("monStale").style.display = "none";
+        }
+      }, 3000);
 
       onValue(ref(db, "/sensor"), snap => {
         const d = snap.val();
         if (!d) return;
+        lastSeen = Date.now();
 
         const t = new Date().toLocaleTimeString("id-ID",
           { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -218,20 +251,24 @@
         setBadge("mb_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
         setBadge("mb_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
         setBadge("mb_ldr",   d.ldrValue,     () => "normal");
-        setBadge("mb_water", d.waterLevel,   v => v < 5 ? "danger" : v < 10 ? "warning" : "normal");
+        setBadge("mb_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
 
         // Chart update
         if (timeLabels.length >= MAX) {
-          timeLabels.shift(); tempArr.shift(); humidArr.shift(); soilArr.shift();
+          timeLabels.shift(); tempArr.shift(); humidArr.shift(); soilArr.shift(); waterArr.shift();
+          cWater.data.datasets[1].data.shift();
         }
         timeLabels.push(t);
         tempArr.push(d.temperature  ?? null);
         humidArr.push(d.humidity    ?? null);
         soilArr.push(d.soilMoisture ?? null);
+        waterArr.push(d.waterLevel  ?? null);
+        cWater.data.datasets[1].data.push(WATER_LEVEL_EMPTY_CM);
 
         cTemp.update("none");
         cHumid.update("none");
         cSoil.update("none");
+        cWater.update("none");
       });
 
       onValue(ref(db, "/actuator"), snap => {

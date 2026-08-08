@@ -64,7 +64,7 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp } from "./shared.js";
     import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("history");
@@ -99,9 +99,10 @@
         snap.forEach(child => {
           const d  = child.val();
           d._key   = child.key;
+          d._ts    = pushIdToTimestamp(child.key); // epoch ms asli, BUKAN Number(key)
           allData.push(d);
         });
-        allData.sort((a, b) => Number(b._key) - Number(a._key));
+        allData.sort((a, b) => b._ts - a._ts);
       }
     }
 
@@ -114,12 +115,12 @@
 
       if (fromVal) {
         const from = new Date(fromVal).getTime();
-        filtered = filtered.filter(d => Number(d._key) >= from);
+        filtered = filtered.filter(d => d._ts >= from);
       }
       if (toVal) {
         const to = new Date(toVal);
         to.setHours(23, 59, 59, 999);
-        filtered = filtered.filter(d => Number(d._key) <= to.getTime());
+        filtered = filtered.filter(d => d._ts <= to.getTime());
       }
 
       document.getElementById("recordInfo").textContent =
@@ -132,8 +133,7 @@
       }
 
       tbody.innerHTML = filtered.map(d => {
-        const ts  = new Date(Number(d._key));
-        const tStr = ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID");
+        const tStr = fmtTs(d._ts);
         return `<tr>
           <td>${tStr}</td>
           <td>${fNum(d.temperature, 1)}</td>
@@ -145,6 +145,12 @@
           <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
         </tr>`;
       }).join("");
+    }
+
+    function fmtTs(ts) {
+      if (!ts || isNaN(ts)) return "—";
+      const d = new Date(ts);
+      return d.toLocaleDateString("id-ID") + " " + d.toLocaleTimeString("id-ID");
     }
 
     function fNum(val, dec) {

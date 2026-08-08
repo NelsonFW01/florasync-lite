@@ -65,12 +65,13 @@ Web App Dashboard (HTML/CSS/JS)
 
 | Kondisi | Aksi |
 |---|---|
-| Kelembaban tanah < 2200 ADC | Pompa ON selama 10 detik |
-| Suhu udara > 30°C | Kipas ON |
-| Kelembaban udara > 80% | Kipas ON |
+| Kelembaban tanah < 2000 ADC | Pompa ON selama 10 detik |
+| Suhu udara > 31°C | Kipas ON |
+| Kelembaban udara > 82% | Kipas ON |
 | Pasca penyiraman (90 detik) | Kipas ON |
 | Cooldown antar siram | 60 detik |
-| Level air < 5 cm | Alert di dashboard |
+| Jarak sensor ke air ≥ 18,5 cm (tandon kosong) | Pompa diblokir + alert di dashboard |
+| Jarak sensor ke air ≤ 12,5 cm | Air dianggap cukup, pompa boleh menyala |
 
 ---
 
@@ -108,9 +109,11 @@ Untuk menjalankan secara lokal, clone repository ini lalu buka menggunakan Live 
 ```
 florasync-lite/
 ├── firebase-config.js      # Konfigurasi Firebase
-├── shared.js               # CSS bersama, sidebar, auth guard
+├── firebase-rules.json     # Security rules Realtime Database (auth != null)
+├── shared.js               # Firebase init, auth guard, sidebar, helper (timestamp & water status)
+├── vendor/                 # jsPDF + jsPDF-AutoTable (di-bundle lokal, tidak bergantung CDN)
 ├── login.html              # Halaman login
-├── dashboard.html          # Halaman dashboard utama
+├── dashboard.html          # Halaman dashboard utama + visualisasi animasi pompa/kipas
 ├── monitoring.html         # Halaman monitoring real-time + grafik
 ├── history.html            # Halaman riwayat data
 ├── export.html             # Halaman export CSV & PDF

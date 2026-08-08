@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FloraSync Lite — Export Data</title>
   <script>setTimeout(function(){ document.body.style.visibility = "visible"; }, 4000);</script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/jspdf.plugin.autotable.min.js"></script>
   <link rel="stylesheet" href="shared.css"/>
   <style>
     body { visibility: hidden; }
@@ -118,7 +118,9 @@
           <input type="date" id="dateTo"/>
         </div>
         <button class="btn-preview" onclick="loadPreview()">Preview Data</button>
+        <button class="btn-secondary" onclick="clearFilter()">Semua Data</button>
       </div>
+      <div id="exportError" style="display:none;background:var(--red-50);color:var(--red-600);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:1rem;"></div>
 
       <div class="card-title">3. Preview Data</div>
       <div class="preview-header">
@@ -155,7 +157,7 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp } from "./shared.js";
     import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("export");
@@ -177,50 +179,71 @@
       document.getElementById("cardPDF").className = "format-card" + (fmt === "pdf" ? " selected" : "");
     };
 
+    window.clearFilter = function() {
+      document.getElementById("dateFrom").value = "";
+      document.getElementById("dateTo").value   = "";
+      loadPreview();
+    };
+
     requireAuth(() => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
     });
 
+    function showError(msg) {
+      const box = document.getElementById("exportError");
+      if (!msg) { box.style.display = "none"; box.textContent = ""; return; }
+      box.style.display = "block";
+      box.textContent = msg;
+    }
+
     window.loadPreview = async function() {
+      showError(null);
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
       const tbody   = document.getElementById("previewBody");
       tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Memuat...</td></tr>`;
 
-      const snap = await get(ref(db, "/history"));
       let data = [];
-      if (snap.exists()) {
-        snap.forEach(child => {
-          const d = child.val();
-          d._key = child.key;
-          data.push(d);
-        });
+      try {
+        const snap = await get(ref(db, "/history"));
+        if (snap.exists()) {
+          snap.forEach(child => {
+            const d = child.val();
+            d._key = child.key;
+            d._ts  = pushIdToTimestamp(child.key); // epoch ms asli, BUKAN Number(key)
+            data.push(d);
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        showError("Gagal mengambil data dari Firebase: " + err.message);
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Gagal memuat data.</td></tr>`;
+        return;
       }
 
       if (fromVal) {
         const from = new Date(fromVal).getTime();
-        data = data.filter(d => Number(d._key) >= from);
+        data = data.filter(d => d._ts >= from);
       }
       if (toVal) {
         const to = new Date(toVal);
         to.setHours(23, 59, 59, 999);
-        data = data.filter(d => Number(d._key) <= to.getTime());
+        data = data.filter(d => d._ts <= to.getTime());
       }
 
-      data.sort((a, b) => Number(b._key) - Number(a._key));
+      data.sort((a, b) => b._ts - a._ts);
       window._exportData = data;
 
       document.getElementById("previewCount").textContent = data.length + " record ditemukan";
       document.getElementById("btnDownload").disabled = data.length === 0;
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
         return;
       }
 
       tbody.innerHTML = data.slice(0, 10).map(d => {
-        const ts   = new Date(Number(d._key));
-        const tStr = ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID");
+        const tStr = fmtTs(d._ts);
         return `<tr>
           <td>${tStr}</td>
           <td>${fNum(d.temperature, 1)}</td>
@@ -234,34 +257,55 @@
       }).join("");
     };
 
-    window.doExport = function() {
+    window.doExport = async function() {
+      showError(null);
       const data = window._exportData;
       if (!data || data.length === 0) return;
-      window._fmt === "csv" ? exportCSV(data) : exportPDF(data);
+
+      const btn = document.getElementById("btnDownload");
+      const originalLabel = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = "Memproses...";
+
+      try {
+        if (window._fmt === "csv") {
+          exportCSV(data);
+        } else {
+          if (!window.jspdf || !window.jspdf.jsPDF) {
+            throw new Error("Library jsPDF belum termuat. Refresh halaman dan coba lagi.");
+          }
+          exportPDF(data);
+        }
+      } catch (err) {
+        console.error(err);
+        showError("Export gagal: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalLabel;
+      }
     };
 
     function exportCSV(data) {
       const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"];
-      const rows   = data.map(d => {
-        const ts = new Date(Number(d._key));
-        return [
-          ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID"),
-          fNum(d.temperature, 1),
-          fNum(d.humidity,    1),
-          fNum(d.soilMoisture, 0),
-          fNum(d.ldrValue,    0),
-          fNum(d.waterLevel,  1),
-          d.pump ? "ON" : "OFF",
-          d.fan  ? "ON" : "OFF"
-        ].join(",");
-      });
+      const rows   = data.map(d => [
+        fmtTs(d._ts),
+        fNum(d.temperature, 1),
+        fNum(d.humidity,    1),
+        fNum(d.soilMoisture, 0),
+        fNum(d.ldrValue,    0),
+        fNum(d.waterLevel,  1),
+        d.pump ? "ON" : "OFF",
+        d.fan  ? "ON" : "OFF"
+      ].join(","));
       const csv  = [header.join(","), ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href = url;
       a.download = "florasync_data_" + new Date().toISOString().split("T")[0] + ".csv";
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       URL.revokeObjectURL(url);
     }
 
@@ -271,7 +315,7 @@
 
       doc.setFontSize(16);
       doc.setTextColor(39, 80, 10);
-      doc.text("FloraSync Lite — Laporan Data Sensor Greenhouse", 14, 16);
+      doc.text("FloraSync Lite - Laporan Data Sensor Greenhouse", 14, 16);
 
       doc.setFontSize(10);
       doc.setTextColor(100);
@@ -280,27 +324,39 @@
 
       doc.autoTable({
         head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"]],
-        body: data.map(d => {
-          const ts = new Date(Number(d._key));
-          return [
-            ts.toLocaleDateString("id-ID") + " " + ts.toLocaleTimeString("id-ID"),
-            fNum(d.temperature, 1),
-            fNum(d.humidity,    1),
-            fNum(d.soilMoisture, 0),
-            fNum(d.ldrValue,    0),
-            fNum(d.waterLevel,  1),
-            d.pump ? "ON" : "OFF",
-            d.fan  ? "ON" : "OFF"
-          ];
-        }),
+        body: data.map(d => [
+          fmtTs(d._ts),
+          fNum(d.temperature, 1),
+          fNum(d.humidity,    1),
+          fNum(d.soilMoisture, 0),
+          fNum(d.ldrValue,    0),
+          fNum(d.waterLevel,  1),
+          d.pump ? "ON" : "OFF",
+          d.fan  ? "ON" : "OFF"
+        ]),
         startY: 34,
         styles: { fontSize: 9, cellPadding: 3 },
         headStyles: { fillColor: [63, 109, 17], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [234, 243, 222] },
-        margin: { left: 14, right: 14 }
+        margin: { left: 14, right: 14 },
+        didDrawPage: (data) => {
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          doc.text(
+            "FloraSync Lite - Skripsi Teknik Informatika, Universitas Bina Nusantara 2026",
+            14, doc.internal.pageSize.getHeight() - 8
+          );
+        }
       });
 
       doc.save("florasync_laporan_" + new Date().toISOString().split("T")[0] + ".pdf");
+    }
+
+    function fmtTs(ts) {
+      if (!ts || isNaN(ts)) return "—";
+      const d = new Date(ts);
+      return d.toLocaleDateString("id-ID") + " " + d.toLocaleTimeString("id-ID");
     }
 
     function fNum(val, dec) {
