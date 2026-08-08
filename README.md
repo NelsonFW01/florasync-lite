@@ -10,8 +10,8 @@
 
 FloraSync Lite adalah sistem greenhouse portabel skala mikro berbasis Internet of Things (IoT) yang dirancang untuk mendukung kegiatan urban farming di lingkungan perkotaan. Sistem ini memungkinkan pemantauan dan pengendalian kondisi lingkungan tanaman secara real-time melalui aplikasi web, dengan pendekatan desain daya rendah (*low-power design*) menggunakan adaptor 5V/2A.
 
-**Dimensi greenhouse:** 55 × 45 × 40 cm
-**Tanaman:** Tomat Cherry, Cabai Merah, Jeruk Limau
+**Dimensi greenhouse:** 55 × 45 × 40 cm<br>
+**Tanaman:** Tomat Cherry, Cabai Merah, Jeruk Limau<br>
 **Mikrokontroler:** ESP32
 
 ---
@@ -159,13 +159,13 @@ florasync-lite/
 | Joshua Jonathan Fariman      | 2702233791 |
 | Nelson Ferdinand Wangsaputra | 2702228892 |
 
-**Program Studi:** Computer Science Program
-**School of Computer Science**
+**Program Studi:** Teknik Informatika<br>
+**School of Computer Science**<br>
 **Universitas Bina Nusantara — Bandung, 2026**
 
 ---
 
 ## 📄 Lisensi
 
-Proyek ini dikembangkan sebagai skripsi Universitas Bina Nusantara.
+Proyek ini dikembangkan sebagai karya ilmiah skripsi Universitas Bina Nusantara.
 © 2026 Calvin Andreas, Joshua Jonathan Fariman, Nelson Ferdinand Wangsaputra. All rights reserved.
