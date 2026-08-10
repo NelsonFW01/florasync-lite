@@ -203,7 +203,9 @@
 
     let cTemp, cHumid, cSoil, cWater;
     const STALE_MS = 15000;
-    let lastSeen = 0;
+    let lastSeen        = 0;
+    let confirmedOnline = false;
+    let pendingActuator = null;
 
     requireAuth(() => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
@@ -224,60 +226,104 @@
       }]);
 
       setInterval(() => {
-        if (lastSeen && Date.now() - lastSeen > STALE_MS) {
-          document.getElementById("monStale").style.display = "block";
-        } else {
-          document.getElementById("monStale").style.display = "none";
-        }
+        if (lastSeen && Date.now() - lastSeen > STALE_MS) setStale();
       }, 3000);
 
       onValue(ref(db, "/sensor"), snap => {
         const d = snap.val();
         if (!d) return;
-        lastSeen = Date.now();
-
-        const t = new Date().toLocaleTimeString("id-ID",
-          { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
-        // Update display
-        setDisplay("m_temp",  d.temperature,  1, "°C");
-        setDisplay("m_humid", d.humidity,     1, "%");
-        setDisplay("m_soil",  d.soilMoisture, 0, "ADC");
-        setDisplay("m_ldr",   d.ldrValue,     0, "ADC");
-        setDisplay("m_water", d.waterLevel,   1, "cm");
-
-        // Badges
-        setBadge("mb_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
-        setBadge("mb_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
-        setBadge("mb_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
-        setBadge("mb_ldr",   d.ldrValue,     () => "normal");
-        setBadge("mb_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
-
-        // Chart update
-        if (timeLabels.length >= MAX) {
-          timeLabels.shift(); tempArr.shift(); humidArr.shift(); soilArr.shift(); waterArr.shift();
-          cWater.data.datasets[1].data.shift();
-        }
-        timeLabels.push(t);
-        tempArr.push(d.temperature  ?? null);
-        humidArr.push(d.humidity    ?? null);
-        soilArr.push(d.soilMoisture ?? null);
-        waterArr.push(d.waterLevel  ?? null);
-        cWater.data.datasets[1].data.push(WATER_LEVEL_EMPTY_CM);
-
-        cTemp.update("none");
-        cHumid.update("none");
-        cSoil.update("none");
-        cWater.update("none");
+        handleSensorSnapshot(d);
       });
 
       onValue(ref(db, "/actuator"), snap => {
         const d = snap.val();
         if (!d) return;
-        setAct("mTagPump", "mIconPump", d.pump);
-        setAct("mTagFan",  "mIconFan",  d.fan);
+        if (confirmedOnline) {
+          setAct("mTagPump", "mIconPump", d.pump);
+          setAct("mTagFan",  "mIconFan",  d.fan);
+        } else {
+          // Belum yakin device beneran hidup sekarang - simpan dulu,
+          // jangan langsung ditampilkan sebagai status "saat ini".
+          pendingActuator = d;
+        }
       });
     });
+
+    // Sama seperti di dashboard: Firebase selalu ngasih nilai TERAKHIR yang
+    // tersimpan begitu listener baru nyambung, walau device sudah lama
+    // mati. Snapshot pertama cuma dipakai buat nampilin angka/chart, belum
+    // dianggap bukti device hidup. Baru dipercaya online kalau snapshot
+    // KEDUA beneran masuk dalam waktu wajar (~11 detik).
+    function handleSensorSnapshot(d) {
+      renderMonitoringData(d);
+
+      if (!confirmedOnline) {
+        if (!lastSeen) {
+          lastSeen = Date.now();
+          setTimeout(() => { if (!confirmedOnline) setStale(); }, 11000);
+          return;
+        }
+        confirmedOnline = true;
+        document.getElementById("monStale").style.display = "none";
+        if (pendingActuator) {
+          setAct("mTagPump", "mIconPump", pendingActuator.pump);
+          setAct("mTagFan",  "mIconFan",  pendingActuator.fan);
+          pendingActuator = null;
+        }
+      }
+      lastSeen = Date.now();
+    }
+
+    // Firebase tidak otomatis reset /actuator kalau device mati/putus
+    // (belum pakai onDisconnect() di firmware). Begitu stale, jangan
+    // percaya lagi ON/OFF terakhir - tampilkan eksplisit sebagai Offline.
+    function setStale() {
+      document.getElementById("monStale").style.display = "block";
+      confirmedOnline = false;
+      lastSeen        = 0;
+      pendingActuator = null;
+      markActUnknown("mTagPump", "mIconPump");
+      markActUnknown("mTagFan",  "mIconFan");
+    }
+
+    function markActUnknown(tagId, iconId) {
+      document.getElementById(tagId).className   = "tag-off";
+      document.getElementById(tagId).textContent = "Offline";
+      document.getElementById(iconId).className  = "act-icon act-off";
+    }
+
+    function renderMonitoringData(d) {
+      const t = new Date().toLocaleTimeString("id-ID",
+        { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+      setDisplay("m_temp",  d.temperature,  1, "°C");
+      setDisplay("m_humid", d.humidity,     1, "%");
+      setDisplay("m_soil",  d.soilMoisture, 0, "ADC");
+      setDisplay("m_ldr",   d.ldrValue,     0, "ADC");
+      setDisplay("m_water", d.waterLevel,   1, "cm");
+
+      setBadge("mb_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
+      setBadge("mb_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
+      setBadge("mb_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
+      setBadge("mb_ldr",   d.ldrValue,     () => "normal");
+      setBadge("mb_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
+
+      if (timeLabels.length >= MAX) {
+        timeLabels.shift(); tempArr.shift(); humidArr.shift(); soilArr.shift(); waterArr.shift();
+        cWater.data.datasets[1].data.shift();
+      }
+      timeLabels.push(t);
+      tempArr.push(d.temperature  ?? null);
+      humidArr.push(d.humidity    ?? null);
+      soilArr.push(d.soilMoisture ?? null);
+      waterArr.push(d.waterLevel  ?? null);
+      cWater.data.datasets[1].data.push(WATER_LEVEL_EMPTY_CM);
+
+      cTemp.update("none");
+      cHumid.update("none");
+      cSoil.update("none");
+      cWater.update("none");
+    }
 
     function setDisplay(id, val, dec, unit) {
       const v = val !== undefined && val !== null
