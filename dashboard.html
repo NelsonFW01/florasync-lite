@@ -278,10 +278,13 @@
     });
 
     // Data harus masuk tiap ~5 detik (SENSOR_INTERVAL/FIREBASE_INTERVAL di
-    // firmware). Kalau lebih dari 15 detik tidak ada update, anggap device
-    // offline - jangan biarkan status "Online" nyangkut dari data lama.
+    // firmware). Kalau lebih dari 15 detik tidak ada update susulan
+    // setelah online kekonfirmasi, anggap device offline.
     const STALE_MS = 15000;
-    let lastSeen = 0;
+    let lastSeen        = 0;
+    let confirmedOnline = false;
+    let pendingActuator = null;
+
     function watchStale() {
       setInterval(() => {
         if (lastSeen && Date.now() - lastSeen > STALE_MS) setOffline();
@@ -292,48 +295,84 @@
       onValue(ref(db, "/sensor"), snap => {
         const d = snap.val();
         if (!d) return;
-
-        lastSeen = Date.now();
-        document.getElementById("lastUpdate").textContent =
-          "Update: " + new Date().toLocaleTimeString("id-ID");
-        setOnline();
-
-        setVal("d_temp",  d.temperature,  1, "°C");
-        setVal("d_humid", d.humidity,     1, "%");
-        setVal("d_soil",  d.soilMoisture, 0, "ADC");
-        setVal("d_ldr",   d.ldrValue,     0, "ADC");
-        setVal("d_water", d.waterLevel,   1, "cm");
-
-        setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
-        setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
-        setBadge("b_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
-        setBadge("b_ldr",   d.ldrValue,     () => "normal");
-        setBadge("b_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
-
-        updateMiniTank(d.waterLevel);
-
-        // Sensor mengukur JARAK ke air, bukan tinggi air - makin BESAR
-        // angkanya makin SEDIKIT airnya. waterEmpty dari firmware (sudah
-        // dihitung dengan hysteresis+fail-safe) jadi acuan utama alert ini.
-        const alertBox  = document.getElementById("waterAlert");
-        const alertText = document.getElementById("waterAlertText");
-        if (d.waterEmpty === true) {
-          alertBox.style.display = "flex";
-          alertText.textContent = "Level air reservoir rendah (" +
-            (d.waterLevel !== undefined ? Number(d.waterLevel).toFixed(1) : "?") +
-            " cm dari sensor, batas kosong " + WATER_LEVEL_EMPTY_CM +
-            " cm). Pompa diblokir sampai tandon diisi ulang.";
-        } else {
-          alertBox.style.display = "none";
-        }
+        handleSensorSnapshot(d);
       });
 
       onValue(ref(db, "/actuator"), snap => {
         const d = snap.val();
         if (!d) return;
-        setActuator("Pump", d.pump);
-        setActuator("Fan",  d.fan);
+        if (confirmedOnline) {
+          setActuator("Pump", d.pump);
+          setActuator("Fan",  d.fan);
+        } else {
+          // Belum yakin device beneran hidup sekarang - simpan dulu,
+          // jangan langsung ditampilkan sebagai status "saat ini".
+          pendingActuator = d;
+        }
       });
+    }
+
+    // Firebase SELALU mengirim nilai TERAKHIR yang tersimpan begitu
+    // listener baru nyambung - walau device-nya sudah mati dari lama.
+    // Kalau langsung dipercaya, dashboard sempat nampilin "Online" +
+    // status Pompa/Kipas hidup padahal itu cuma sisa data basi.
+    // Snapshot PERTAMA cuma ditampilkan sebagai angka referensi, belum
+    // menyalakan badge Online. Baru dipercaya online kalau snapshot KEDUA
+    // beneran masuk dalam rentang wajar (device aktif kirim tiap ~5 detik).
+    // Kalau snapshot kedua gak kunjung datang, langsung Offline - gak
+    // perlu nunggu basi 15 detik dari titik acuan yang salah dari awal.
+    function handleSensorSnapshot(d) {
+      renderSensorValues(d);
+
+      if (!confirmedOnline) {
+        if (!lastSeen) {
+          lastSeen = Date.now();
+          setTimeout(() => { if (!confirmedOnline) setOffline(); }, 11000);
+          return;
+        }
+        confirmedOnline = true;
+        setOnline();
+        if (pendingActuator) {
+          setActuator("Pump", pendingActuator.pump);
+          setActuator("Fan",  pendingActuator.fan);
+          pendingActuator = null;
+        }
+      }
+
+      lastSeen = Date.now();
+      document.getElementById("lastUpdate").textContent =
+        "Update: " + new Date().toLocaleTimeString("id-ID");
+    }
+
+    function renderSensorValues(d) {
+      setVal("d_temp",  d.temperature,  1, "°C");
+      setVal("d_humid", d.humidity,     1, "%");
+      setVal("d_soil",  d.soilMoisture, 0, "ADC");
+      setVal("d_ldr",   d.ldrValue,     0, "ADC");
+      setVal("d_water", d.waterLevel,   1, "cm");
+
+      setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
+      setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
+      setBadge("b_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
+      setBadge("b_ldr",   d.ldrValue,     () => "normal");
+      setBadge("b_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
+
+      updateMiniTank(d.waterLevel);
+
+      // Sensor mengukur JARAK ke air, bukan tinggi air - makin BESAR
+      // angkanya makin SEDIKIT airnya. waterEmpty dari firmware (sudah
+      // dihitung dengan hysteresis+fail-safe) jadi acuan utama alert ini.
+      const alertBox  = document.getElementById("waterAlert");
+      const alertText = document.getElementById("waterAlertText");
+      if (d.waterEmpty === true) {
+        alertBox.style.display = "flex";
+        alertText.textContent = "Level air reservoir rendah (" +
+          (d.waterLevel !== undefined ? Number(d.waterLevel).toFixed(1) : "?") +
+          " cm dari sensor, batas kosong " + WATER_LEVEL_EMPTY_CM +
+          " cm). Pompa diblokir sampai tandon diisi ulang.";
+      } else {
+        alertBox.style.display = "none";
+      }
     }
 
     function updateMiniTank(level) {
@@ -363,6 +402,9 @@
       const el = document.getElementById("deviceStatus");
       el.className = "badge badge-offline";
       el.innerHTML = '<span class="dot"></span> Offline';
+      confirmedOnline = false;
+      lastSeen        = 0;
+      pendingActuator = null;
       markActuatorUnknown("Pump");
       markActuatorUnknown("Fan");
     }
