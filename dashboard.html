@@ -180,7 +180,6 @@
             <!-- pot + plant -->
             <path d="M35 40 L75 40 L68 62 L42 62 Z" fill="var(--amber-50)" stroke="var(--amber-400)" stroke-width="1.5"/>
             <path d="M55 40 C55 20 40 18 34 8 M55 40 C55 18 70 16 78 6 M55 40 L55 12" fill="none" stroke="var(--green-400)" stroke-width="3" stroke-linecap="round"/>
-            <text x="55" y="26" font-size="10" fill="var(--gray-400)" text-anchor="middle">Tanaman</text>
 
             <!-- pipe: pot -> pump -->
             <rect x="51" y="62" width="8" height="46" fill="var(--gray-100)"/>
@@ -353,10 +352,29 @@
       el.innerHTML = '<span class="dot"></span> Online';
     }
 
+    // Firebase TIDAK otomatis menghapus/reset /actuator kalau ESP32-nya
+    // mati atau putus koneksi (firmware belum pakai onDisconnect()). Jadi
+    // kalau kipas ON pas listrik tiba-tiba mati, nilai "ON" itu nyangkut
+    // selamanya di database walau kipas fisiknya sudah pasti berhenti.
+    // Begitu status Offline, jangan percaya lagi state aktuator terakhir -
+    // tampilkan sebagai "Offline", bukan seolah itu kondisi yang sedang
+    // berjalan sekarang.
     function setOffline() {
       const el = document.getElementById("deviceStatus");
       el.className = "badge badge-offline";
       el.innerHTML = '<span class="dot"></span> Offline';
+      markActuatorUnknown("Pump");
+      markActuatorUnknown("Fan");
+    }
+
+    function markActuatorUnknown(name) {
+      const tag = document.getElementById("tag" + name);
+      tag.className  = "tag-off";
+      tag.textContent = "Offline";
+      const icon = document.getElementById("icon" + name);
+      icon.className = "act-icon act-off";
+      document.getElementById("scene" + name + "State").textContent = "Offline";
+      document.getElementById("sceneWrap").classList.remove(name.toLowerCase() + "-on");
     }
 
     function setVal(id, val, decimals, unit) {
