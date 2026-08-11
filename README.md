@@ -111,21 +111,25 @@ Untuk menjalankan secara lokal, clone repository ini lalu buka menggunakan Live 
 
 ```
 florasync-lite/
-├── .gitignore                    # Mengecualikan firmware asli & secrets.h (credential asli) dari git
-├── firebase-config.js            # Konfigurasi Firebase (apiKey publik, aman diekspos)
-├── firebase-rules.json           # Security rules Realtime Database (read utk semua login, write hanya UID admin)
-├── secrets.h.example              # Template kredensial WiFi & akun device; copy jadi secrets.h dan isi sendiri
-├── secrets.h                      # (TIDAK di-commit) kredensial WiFi & akun device asli
-├── shared.js                     # Firebase init, auth guard, sidebar, helper (timestamp & water status)
-├── vendor/                       # jsPDF + jsPDF-AutoTable (di-bundle lokal, tidak bergantung CDN)
-├── login.html                    # Halaman login
-├── dashboard.html                # Halaman dashboard utama + visualisasi animasi pompa/kipas
-├── monitoring.html               # Halaman monitoring real-time + grafik
-├── history.html                  # Halaman riwayat data
-├── export.html                   # Halaman export CSV & PDF
-├── florasync_firmware.ino        # Firmware ESP32 asli - JANGAN di-commit (include secrets.h)
-└── florasync_firmware.example.ino # Versi commit-able, pakai secrets.h.example sebagai placeholder
+├── .gitignore                     # Aturan pengecualian file dari git
+├── firebase-config.js             # Konfigurasi Firebase (apiKey publik, aman diekspos)
+├── firebase-rules.json            # Security rules Realtime Database (arsip/dokumentasi)
+├── secrets.h.example              # Template kredensial WiFi & akun device
+├── shared.js                      # Firebase init, auth guard, sidebar, helper (timestamp & water status)
+├── vendor/                        # jsPDF + jsPDF-AutoTable (di-bundle lokal, tidak bergantung CDN)
+├── index.html                     # Redirect awal
+├── login.html                     # Halaman login
+├── dashboard.html                 # Halaman dashboard utama + visualisasi animasi pompa/kipas
+├── monitoring.html                # Halaman monitoring real-time + grafik
+├── history.html                   # Halaman riwayat data
+├── export.html                    # Halaman export CSV & PDF
+├── shared.css                     # Style bersama seluruh halaman
+└── florasync_firmware.example.ino # Firmware ESP32, versi placeholder tanpa credential
 ```
+
+> Dua file lain — `florasync_firmware.ino` (firmware asli) dan `secrets.h` (credential asli) — sengaja tidak ada di repo ini. Keduanya dibuat sendiri di komputer masing-masing mengikuti `secrets.h.example` dan panduan di bagian **Firmware ESP32** di atas.
+
+
 
 ---
 
