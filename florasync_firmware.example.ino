@@ -17,8 +17,10 @@
 #define RELAY_FAN     23
 
 // ========== GANTI DENGAN MILIK KALIAN ==========
-#define WIFI_SSID         "GANTI_DENGAN_WIFI_KALIAN"
-#define WIFI_PASSWORD     "GANTI_DENGAN_PASSWORD_KALIAN"
+// Kredensial nyata JANGAN ditaruh di sini. Copy secrets.h.example -> secrets.h,
+// isi di sana, dan pastikan secrets.h masuk .gitignore.
+#include "secrets.h"   // berisi WIFI_SSID, WIFI_PASSWORD, DEVICE_EMAIL, DEVICE_PASSWORD
+
 #define API_KEY      "AIzaSyAP5lGx8vTPw0pcTyxdx1kBtavbDpVmflE"
 #define DATABASE_URL "https://florasync-lite-default-rtdb.asia-southeast1.firebasedatabase.app"
 // ================================================
@@ -86,7 +88,7 @@ float lastValidHum  = 0;
 // WATER_LEVEL_EMPTY_CM dikurangi tinggi air minimum yang diinginkan (cm).
 const float WATER_LEVEL_EMPTY_CM = 18.5;
 const float WATER_LEVEL_OK_CM    = 12.5;
-const int   MAX_ULTRASONIC_FAULT_TRUST = 3; // gagal berturut2 >= ini -> data lama tak dipercaya lagi
+const int   MAX_ULTRASONIC_FAULT_TRUST = 3; 
 
 bool  waterEmpty        = true;  // default aman saat boot: anggap habis sampai terbukti ada air
 float lastValidDistance = -1;
@@ -198,17 +200,15 @@ void setup() {
   }
 
   // ========== FIREBASE INIT ==========
+  // Pakai akun device TETAP (email/password), bukan anonymous, supaya UID
+  // stabil dan bisa di-whitelist di rules ("/admins/<uid>": true).
+  // Akun ini dibuat sekali secara manual di Firebase Console > Authentication.
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
 
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Firebase signup OK (anonymous)");
-    signupOK = true;
-  } else {
-    Serial.printf("Firebase signup error: %s\n",
-      config.signer.signupError.message.c_str());
-    safeRestart();
-  }
+  auth.user.email    = DEVICE_EMAIL;
+  auth.user.password = DEVICE_PASSWORD;
+  signupOK = true; // sign-in ditangani otomatis oleh Firebase.begin() di bawah
 
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
