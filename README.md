@@ -94,11 +94,14 @@ Untuk menjalankan secara lokal, clone repository ini lalu buka menggunakan Live 
    - `Firebase ESP Client` by Mobizt
    - `DHT sensor library` by Adafruit
    - `Adafruit Unified Sensor` by Adafruit
-3. Ganti konfigurasi WiFi di bagian atas file:
+3. Copy `secrets.h.example` menjadi `secrets.h` (di folder yang sama dengan `.ino`), lalu isi:
 ```cpp
-#define WIFI_SSID      "nama_wifi_kalian"
-#define WIFI_PASSWORD  "password_wifi_kalian"
+#define WIFI_SSID       "nama_wifi_kalian"
+#define WIFI_PASSWORD   "password_wifi_kalian"
+#define DEVICE_EMAIL    "akun_device@email_kalian.com"
+#define DEVICE_PASSWORD "password_akun_device"
 ```
+   `DEVICE_EMAIL`/`DEVICE_PASSWORD` adalah akun Firebase Authentication yang dibuat manual lewat Firebase Console (Authentication > Add user), dan UID-nya sudah diizinkan menulis di `firebase-rules.json`. **File `secrets.h` tidak boleh di-commit** — sudah otomatis dikecualikan lewat `.gitignore`.
 4. Set board: Tools → Board → ESP32 Dev Module
 5. Upload ke ESP32
 
@@ -108,9 +111,11 @@ Untuk menjalankan secara lokal, clone repository ini lalu buka menggunakan Live 
 
 ```
 florasync-lite/
-├── .gitignore                    # Mengecualikan firmware asli (ada WiFi credential) dari git
-├── firebase-config.js            # Konfigurasi Firebase
-├── firebase-rules.json           # Security rules Realtime Database (auth != null)
+├── .gitignore                    # Mengecualikan firmware asli & secrets.h (credential asli) dari git
+├── firebase-config.js            # Konfigurasi Firebase (apiKey publik, aman diekspos)
+├── firebase-rules.json           # Security rules Realtime Database (read utk semua login, write hanya UID admin)
+├── secrets.h.example              # Template kredensial WiFi & akun device; copy jadi secrets.h dan isi sendiri
+├── secrets.h                      # (TIDAK di-commit) kredensial WiFi & akun device asli
 ├── shared.js                     # Firebase init, auth guard, sidebar, helper (timestamp & water status)
 ├── vendor/                       # jsPDF + jsPDF-AutoTable (di-bundle lokal, tidak bergantung CDN)
 ├── login.html                    # Halaman login
@@ -118,8 +123,8 @@ florasync-lite/
 ├── monitoring.html               # Halaman monitoring real-time + grafik
 ├── history.html                  # Halaman riwayat data
 ├── export.html                   # Halaman export CSV & PDF
-├── florasync_firmware.ino        # Firmware ESP32 asli - JANGAN di-commit (ada WiFi credential asli)
-└── florasync_firmware.example.ino # Versi commit-able, ganti placeholder WiFi dengan punya kalian
+├── florasync_firmware.ino        # Firmware ESP32 asli - JANGAN di-commit (include secrets.h)
+└── florasync_firmware.example.ino # Versi commit-able, pakai secrets.h.example sebagai placeholder
 ```
 
 ---
