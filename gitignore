@@ -1,0 +1,7 @@
+florasync_firmware.ino
+secrets.h
+
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
