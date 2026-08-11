@@ -1,8 +1,6 @@
-# Firmware asli kalian - punya WiFi SSID/password sungguhan, JANGAN commit.
-# Yang di-commit ke repo adalah florasync_firmware.example.ino (placeholder).
 florasync_firmware.ino
+secrets.h
 
-# OS / editor junk
 .DS_Store
 Thumbs.db
 *.swp
