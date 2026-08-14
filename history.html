@@ -13,6 +13,53 @@
       color: var(--gray-400);
       margin-bottom: 0.75rem;
     }
+
+    /* Kartu-list, cuma dipakai di HP. Di desktop tabel yang jalan. */
+    .history-cards { display: none; }
+
+    @media (max-width: 640px) {
+      .table-wrap { display: none; }
+      .history-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .hist-card {
+        background: #fff;
+        border: 1px solid var(--gray-100);
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+      }
+      .hist-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--gray-100);
+      }
+      .hist-ts {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #1a1a1a;
+      }
+      .hist-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+        margin-bottom: 8px;
+      }
+      .hist-field { display: flex; justify-content: space-between; font-size: 12.5px; }
+      .hist-field-label { color: var(--gray-400); }
+      .hist-field-val   { font-weight: 600; color: #1a1a1a; }
+      .hist-actuators {
+        display: flex;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--gray-100);
+      }
+      .hist-actuators > div { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--gray-600); }
+    }
   </style>
 </head>
 <body>
@@ -61,6 +108,11 @@
           <tr><td colspan="9" class="empty-state">Memuat data...</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Versi kartu, cuma tampil di HP (lihat @media di <style> atas) -->
+    <div class="history-cards" id="cardsBody">
+      <div class="empty-state">Memuat data...</div>
     </div>
   </main>
 
@@ -111,6 +163,7 @@
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
       const tbody   = document.getElementById("tableBody");
+      const cards   = document.getElementById("cardsBody");
 
       let filtered = [...allData];
 
@@ -130,6 +183,7 @@
 
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
+        cards.innerHTML = `<div class="empty-state">Tidak ada data dalam rentang ini.</div>`;
         return;
       }
 
@@ -146,6 +200,27 @@
           <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
           <td>${fmtTrigger(d.trigger)}</td>
         </tr>`;
+      }).join("");
+
+      cards.innerHTML = filtered.map(d => {
+        const tStr = fmtTs(d._ts);
+        return `<div class="hist-card">
+          <div class="hist-card-top">
+            <span class="hist-ts">${tStr}</span>
+            ${fmtTrigger(d.trigger)}
+          </div>
+          <div class="hist-grid">
+            <div class="hist-field"><span class="hist-field-label">Suhu</span><span class="hist-field-val">${fNum(d.temperature, 1)} °C</span></div>
+            <div class="hist-field"><span class="hist-field-label">Humid Udara</span><span class="hist-field-val">${fNum(d.humidity, 1)} %</span></div>
+            <div class="hist-field"><span class="hist-field-label">Tanah</span><span class="hist-field-val">${fNum(d.soilMoisture, 0)} ADC</span></div>
+            <div class="hist-field"><span class="hist-field-label">Cahaya</span><span class="hist-field-val">${fNum(d.ldrValue, 0)} ADC</span></div>
+            <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Level Air</span><span class="hist-field-val">${fNum(d.waterLevel, 1)} cm</span></div>
+          </div>
+          <div class="hist-actuators">
+            <div>Pompa <span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></div>
+            <div>Kipas <span class="${d.fan ? 'tag-on' : 'tag-off'}">${d.fan ? 'ON' : 'OFF'}</span></div>
+          </div>
+        </div>`;
       }).join("");
     }
 

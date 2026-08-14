@@ -109,14 +109,23 @@
         <div class="card-title">Status Aktuator</div>
         <div class="actuator-row">
           <div class="actuator-name">
-            <div class="act-icon act-off" id="mIconPump"></div>
+            <div class="act-icon act-off" id="mIconPump">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/>
+              </svg>
+            </div>
             Pompa Air
           </div>
           <span id="mTagPump" class="tag-off">OFF</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
-            <div class="act-icon act-off" id="mIconFan"></div>
+            <div class="act-icon act-off" id="mIconFan">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 12c2-3 2-6-1-8-2 2-2 5 1 8zm0 0c3 2 6 2 8-1-2-2-5-2-8 1zm0 0c-2 3-2 6 1 8 2-2 2-5-1-8zm0 0c-3-2-6-2-8 1 2 2 5 2 8-1z"/>
+                <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+              </svg>
+            </div>
             Kipas
           </div>
           <span id="mTagFan" class="tag-off">OFF</span>
@@ -157,8 +166,8 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM } from "./shared.js";
-    import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, pushIdToTimestamp } from "./shared.js";
+    import { ref, onValue, query, limitToLast, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("monitoring");
     document.body.style.visibility = "visible";
@@ -207,7 +216,41 @@
     let confirmedOnline = false;
     let pendingActuator = null;
 
-    requireAuth(() => {
+    async function loadRecentHistoryIntoCharts() {
+      try {
+        const q    = query(ref(db, "/history"), limitToLast(MAX));
+        const snap = await get(q);
+        if (!snap.exists()) return;
+
+        const rows = [];
+        snap.forEach(child => {
+          rows.push({ ts: pushIdToTimestamp(child.key), ...child.val() });
+        });
+        rows.sort((a, b) => a.ts - b.ts); // lama -> baru, biar urut kiri ke kanan di chart
+
+        rows.forEach(d => {
+          const t = new Date(d.ts).toLocaleTimeString("id-ID",
+            { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          timeLabels.push(t);
+          tempArr.push(d.temperature   ?? null);
+          humidArr.push(d.humidity     ?? null);
+          soilArr.push(d.soilMoisture  ?? null);
+          waterArr.push(d.waterLevel   ?? null);
+          cWater.data.datasets[1].data.push(WATER_LEVEL_EMPTY_CM);
+        });
+
+        cTemp.update("none");
+        cHumid.update("none");
+        cSoil.update("none");
+        cWater.update("none");
+      } catch (e) {
+        // Gagal narik riwayat bukan hal fatal - chart tetap jalan,
+        // cuma mulai dari kosong lalu keisi live seperti sebelumnya.
+        console.warn("[Monitoring] Gagal memuat riwayat awal chart:", e);
+      }
+    }
+
+    requireAuth(async () => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
 
       cTemp  = makeChart("chartTemp",  "Suhu °C",     "#BA7517", tempArr);
@@ -224,6 +267,11 @@
         fill: false,
         borderWidth: 1.5
       }]);
+
+      // Isi chart pakai riwayat terakhir dari /history dulu, biar begitu
+      // halaman dibuka langsung kelihatan trennya - bukan mulai dari
+      // kosong terus nambah 1 titik per 5 detik data live baru masuk.
+      await loadRecentHistoryIntoCharts();
 
       setInterval(() => {
         if (lastSeen && Date.now() - lastSeen > STALE_MS) setStale();

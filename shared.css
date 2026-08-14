@@ -285,8 +285,8 @@
     justify-content: center;
   }
 
-  .act-on  { background: var(--teal-50); }
-  .act-off { background: var(--gray-50); }
+  .act-on  { background: var(--teal-50); color: var(--teal-600); }
+  .act-off { background: var(--gray-50); color: var(--gray-400); }
 
   .tag-on  { background: var(--teal-50);  color: var(--teal-600);  padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
   .tag-off { background: var(--gray-50);  color: var(--gray-400);  padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
