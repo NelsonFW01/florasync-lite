@@ -426,4 +426,40 @@
       margin: 0.5rem 0.5rem 0;
     }
     .main { padding: 1rem; }
+
+    /* Kartu-kartu sensor (grid-5 di dashboard.html, sensor-grid di
+       monitoring.html) sama-sama pakai auto-fit minmax(150px,1fr). Di HP
+       itu jatohnya 2 kolom sempit isi ikon+label+angka+badge yang
+       keliatan rapet/padet. Dipaksa 2 kolom yang proporsional + ukuran
+       teks/padding dikecilkan supaya muat rapi, bukan numpuk sesak. */
+    .grid-5, .sensor-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .stat-card, .sensor-card {
+      padding: 0.75rem 0.85rem;
+    }
+    .stat-value, .sensor-big {
+      font-size: 20px;
+    }
+    .stat-label, .sensor-name {
+      font-size: 11px;
+    }
+    .card, .chart-card {
+      padding: 1rem;
+    }
+    .card-title, .chart-title {
+      margin-bottom: 0.6rem;
+    }
+    thead th, tbody td {
+      padding: 8px 10px;
+      font-size: 12px;
+    }
   }
+
+  /* HP kecil (<380px, mis. iPhone SE) - 2 kolom masih kesempitan untuk
+     kartu sensor, turunkan jadi 1 kolom penuh. */
+  @media (max-width: 380px) {
+    .grid-5, .sensor-grid {
+      grid-template-columns: 1fr;
+    }
