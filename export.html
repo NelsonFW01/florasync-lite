@@ -139,10 +139,11 @@
               <th>Level Air (cm)</th>
               <th>Pompa</th>
               <th>Kipas</th>
+              <th>Trigger</th>
             </tr>
           </thead>
           <tbody id="previewBody">
-            <tr><td colspan="8" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
+            <tr><td colspan="9" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
           </tbody>
         </table>
       </div>
@@ -201,7 +202,7 @@
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
       const tbody   = document.getElementById("previewBody");
-      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Memuat...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Memuat...</td></tr>`;
 
       let data = [];
       try {
@@ -217,7 +218,7 @@
       } catch (err) {
         console.error(err);
         showError("Gagal mengambil data dari Firebase: " + err.message);
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Gagal memuat data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Gagal memuat data.</td></tr>`;
         return;
       }
 
@@ -238,7 +239,7 @@
       document.getElementById("btnDownload").disabled = data.length === 0;
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
         return;
       }
 
@@ -253,9 +254,16 @@
           <td>${fNum(d.waterLevel,  1)}</td>
           <td>${d.pump ? "ON" : "OFF"}</td>
           <td>${d.fan  ? "ON" : "OFF"}</td>
+          <td>${fmtTrigger(d.trigger)}</td>
         </tr>`;
       }).join("");
     };
+
+    function fmtTrigger(trigger) {
+      // Data lama (sebelum firmware pakai event-based logging) tidak
+      // punya field ini - tampilkan sebagai "Periodik".
+      return trigger === "actuatorChange" ? "Perubahan Status" : "Periodik";
+    }
 
     window.doExport = async function() {
       showError(null);
@@ -286,7 +294,7 @@
     };
 
     function exportCSV(data) {
-      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"];
+      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"];
       const rows   = data.map(d => [
         fmtTs(d._ts),
         fNum(d.temperature, 1),
@@ -295,7 +303,8 @@
         fNum(d.ldrValue,    0),
         fNum(d.waterLevel,  1),
         d.pump ? "ON" : "OFF",
-        d.fan  ? "ON" : "OFF"
+        d.fan  ? "ON" : "OFF",
+        fmtTrigger(d.trigger)
       ].join(","));
       const csv  = [header.join(","), ...rows].join("\n");
       const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -323,7 +332,7 @@
       doc.text("Total record: " + data.length, 14, 28);
 
       doc.autoTable({
-        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas"]],
+        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"]],
         body: data.map(d => [
           fmtTs(d._ts),
           fNum(d.temperature, 1),
@@ -332,7 +341,8 @@
           fNum(d.ldrValue,    0),
           fNum(d.waterLevel,  1),
           d.pump ? "ON" : "OFF",
-          d.fan  ? "ON" : "OFF"
+          d.fan  ? "ON" : "OFF",
+          fmtTrigger(d.trigger)
         ]),
         startY: 34,
         styles: { fontSize: 9, cellPadding: 3 },

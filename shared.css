@@ -407,5 +407,23 @@
     .logout-btn span, .sidebar-footer {
       display: none;
     }
+    .sidebar-logo {
+      padding: 0 0 1.25rem;
+      justify-content: center;
+    }
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+    }
+    .nav-item {
+      justify-content: center;
+      padding: 9px 0;
+    }
+    .logout-btn {
+      justify-content: center;
+      padding: 9px 0;
+      width: calc(100% - 1rem);
+      margin: 0.5rem 0.5rem 0;
+    }
     .main { padding: 1rem; }
   }

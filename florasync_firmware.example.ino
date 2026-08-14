@@ -27,6 +27,14 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 FirebaseData fbdo;
+// FirebaseData terpisah khusus untuk /history. Firebase-ESP32 client bersifat
+// blocking/sinkron per FirebaseData object -- kalau history (event-based,
+// bisa terpicu kapan saja saat status berubah) berbagi object yang sama
+// dengan sendToFirebase() (rutin per FIREBASE_INTERVAL), satu bisa
+// menimpa/menunggu state buffer yang lain. Dengan object terpisah,
+// write ke /sensor+/actuator dan write ke /history tidak saling
+// mengganggu walau waktunya berdekatan.
+FirebaseData fbdoHistory;
 FirebaseAuth auth;
 FirebaseConfig config;
 
@@ -41,6 +49,11 @@ bool pumpActive    = false;
 bool hasEverPumped = false;
 unsigned long pumpStart = 0;
 unsigned long pumpStop  = 0;
+
+// Diset true oleh controlActuators() saat pompa/kipas baru saja berubah
+// status. loop() membaca ini untuk memicu saveToHistory() event-based,
+// terpisah dari jadwal periodik (HISTORY_INTERVAL).
+bool actuatorChangedThisCycle = false;
 
 // ========== FAN CONTROL (dengan HYSTERESIS) ==========
 const float TEMP_FAN_ON   = 31.0;   // kipas ON jika suhu > 31°C
@@ -522,6 +535,13 @@ void controlActuators() {
     writeRelayVerified(RELAY_FAN, fanState);
   }
 
+  // Tandai ada perubahan aktuator di siklus ini -> dipakai loop() untuk
+  // memicu saveToHistory() SEGERA (event-based), di luar jadwal periodik
+  // 60 detik. Ini penting karena PUMP_DURATION cuma 10 detik: kalau cuma
+  // mengandalkan snapshot periodik, siklus ON pompa yang singkat itu sering
+  // "tidak kepotret" walau pompa & kipas sebenarnya sempat nyala bersamaan.
+  actuatorChangedThisCycle = pumpChanged || fanChanged;
+
   Serial.println();
 }
 
@@ -573,7 +593,11 @@ void sendToFirebase() {
 }
 
 // ========== SAVE TO HISTORY (dengan retry) ==========
-void saveToHistory() {
+// reason: "periodic" (jadwal 60 detik) atau "actuatorChange" (dipicu segera
+// saat pompa/kipas baru saja ON/OFF). Disimpan di field "trigger" supaya
+// saat analisis data, snapshot rutin vs event perubahan aktuator bisa
+// dibedakan.
+void saveToHistory(const char* reason) {
   if (!signupOK || !Firebase.ready()) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -586,6 +610,7 @@ void saveToHistory() {
   json.set("waterEmpty",  waterEmpty);
   json.set("pump",        pumpActive);
   json.set("fan",         fanState);
+  json.set("trigger",     reason);
   json.set("uptimeMs",    (double)millis());
   // Sertakan diagnostik di riwayat juga, berguna untuk analisis tren fault
   json.set("dhtFaultCount", dhtFaultCount);
@@ -593,10 +618,10 @@ void saveToHistory() {
   json.set("relayMismatchCount", relayMismatchCount);
   json.set("pumpDryRunStopCount", (int)pumpDryRunStopCount);
 
-  if (Firebase.RTDB.pushJSON(&fbdo, "/history", &json)) {
-    Serial.println("[Firebase] History tersimpan: /history/" + fbdo.pushName());
+  if (Firebase.RTDB.pushJSON(&fbdoHistory, "/history", &json)) {
+    Serial.printf("[Firebase] History tersimpan (%s): /history/%s\n", reason, fbdoHistory.pushName().c_str());
   } else {
-    Serial.println("[Firebase] Gagal simpan history: " + fbdo.errorReason());
+    Serial.println("[Firebase] Gagal simpan history: " + fbdoHistory.errorReason());
   }
 }
 
@@ -617,8 +642,26 @@ void loop() {
     sendToFirebase();
   }
 
+  // --- Event-based: begitu ada perubahan status pompa/kipas, langsung
+  // simpan snapshot history SAAT ITU JUGA. Ini yang bikin momen "pompa &
+  // kipas nyala bersamaan" (atau perubahan status apa pun, walau cuma
+  // 10 detik) pasti kecatat, tidak lagi bergantung untung-untungan pada
+  // jadwal periodik 60 detik.
+  // Guard MIN_EVENT_HISTORY_GAP: cegah dua write beruntun kalau pompa &
+  // kipas kebetulan berubah di siklus sensor yang sama (sudah ditulis
+  // sekali) atau device baru boot (lastHistory masih 0).
+  const unsigned long MIN_EVENT_HISTORY_GAP = 1000; // 1 detik
+  if (actuatorChangedThisCycle && (now - lastHistory >= MIN_EVENT_HISTORY_GAP)) {
+    actuatorChangedThisCycle = false;
+    lastHistory = now;
+    saveToHistory("actuatorChange");
+  }
+
+  // --- Periodik: tetap simpan snapshot rutin tiap HISTORY_INTERVAL untuk
+  // menjaga kepadatan data tren sensor, terlepas dari ada perubahan
+  // aktuator atau tidak. ---
   if (now - lastHistory >= HISTORY_INTERVAL) {
     lastHistory = now;
-    saveToHistory();
+    saveToHistory("periodic");
   }
 }

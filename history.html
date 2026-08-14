@@ -54,10 +54,11 @@
             <th>Level Air (cm)</th>
             <th>Pompa</th>
             <th>Kipas</th>
+            <th>Trigger</th>
           </tr>
         </thead>
         <tbody id="tableBody">
-          <tr><td colspan="8" class="empty-state">Memuat data...</td></tr>
+          <tr><td colspan="9" class="empty-state">Memuat data...</td></tr>
         </tbody>
       </table>
     </div>
@@ -128,7 +129,7 @@
         (fromVal || toVal ? " dalam rentang yang dipilih" : " (total)");
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
         return;
       }
 
@@ -143,8 +144,18 @@
           <td>${fNum(d.waterLevel,  1)}</td>
           <td><span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></td>
           <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
+          <td>${fmtTrigger(d.trigger)}</td>
         </tr>`;
       }).join("");
+    }
+
+    function fmtTrigger(trigger) {
+      // Data lama (sebelum firmware diperbarui) tidak punya field "trigger" -
+      // tampilkan sebagai "Periodik" karena itu satu-satunya jenis saat itu.
+      if (trigger === "actuatorChange") {
+        return `<span class="badge badge-online">Perubahan Status</span>`;
+      }
+      return `<span class="badge badge-offline">Periodik</span>`;
     }
 
     function fmtTs(ts) {
