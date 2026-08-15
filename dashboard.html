@@ -28,6 +28,11 @@
       color: #7c5800;
       margin-bottom: 1.25rem;
     }
+    #brownoutAlert {
+      background: #fdecea;
+      border-color: #f5b4ae;
+      color: #8a1f16;
+    }
     .info-row {
       display: flex;
       justify-content: space-between;
@@ -121,6 +126,14 @@
     <div id="waterAlert" class="water-alert">
       ⚠️ <strong>Peringatan:</strong>&nbsp;<span id="waterAlertText">Level air reservoir rendah! Segera isi ulang.</span>
     </div>
+
+    <!-- Brownout alert - cuma muncul kalau boot terakhir ESP32 disebabkan
+         tegangan drop (biasanya karena pompa+kipas narik arus bareng dan
+         power supply-nya kurang kuat) -->
+    <div id="brownoutAlert" class="water-alert" style="display:none;">
+      ⚡ <strong>Boot terakhir karena brownout:</strong>&nbsp;tegangan sempat drop di bawah batas aman ESP32 (biasanya karena suplai daya kurang kuat). Cek adaptor & jalur power aktuator.
+    </div>
+
 
     <!-- Sensor cards -->
     <div class="grid-5">
@@ -260,6 +273,7 @@
         <div class="info-row"><span>Sensor</span><span class="info-val">DHT22, Soil, LDR, HC-SR04</span></div>
         <div class="info-row"><span>Sumber daya</span><span class="info-val">Adaptor 5V/2A</span></div>
         <div class="info-row"><span>Interval baca</span><span class="info-val">5 detik</span></div>
+        <div class="info-row"><span>Reset terakhir</span><span class="info-val" id="lastResetReason">—</span></div>
       </div>
     </div>
   </main>
@@ -275,7 +289,36 @@
       document.getElementById("logoutBtn").addEventListener("click", logout);
       listenData();
       watchStale();
+      listenResetReason();
     });
+
+    const RESET_REASON_LABEL = {
+      poweron: "Power-on normal",
+      external: "Reset pin eksternal",
+      software: "Software reset",
+      panic: "Crash (panic)",
+      interrupt_watchdog: "Interrupt watchdog",
+      task_watchdog: "Task watchdog (loop macet)",
+      watchdog: "Watchdog",
+      brownout: "Brownout (tegangan drop)",
+      deepsleep: "Bangun dari deep sleep",
+      unknown: "Tidak diketahui"
+    };
+
+    function listenResetReason() {
+      onValue(ref(db, "/diagnostics/lastReset"), snap => {
+        const d = snap.val();
+        const el     = document.getElementById("lastResetReason");
+        const banner = document.getElementById("brownoutAlert");
+        if (!d) {
+          el.textContent = "—";
+          banner.style.display = "none";
+          return;
+        }
+        el.textContent = RESET_REASON_LABEL[d.reason] || d.reason || "—";
+        banner.style.display = d.isBrownout ? "flex" : "none";
+      });
+    }
 
     // Data harus masuk tiap ~5 detik (SENSOR_INTERVAL/FIREBASE_INTERVAL di
     // firmware). Kalau lebih dari 15 detik tidak ada update susulan

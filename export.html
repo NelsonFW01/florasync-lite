@@ -155,11 +155,32 @@
         Download Data
       </button>
     </div>
+
+    <div class="card" style="border:1px solid var(--red-100,#f5c6c2);margin-top:1.5rem;">
+      <div class="card-title" style="color:var(--red-600,#c0392b);">⚠️ Zona Berbahaya — Hapus Data</div>
+      <p style="font-size:13px;color:var(--gray-400);margin:0 0 1rem;">
+        Tindakan ini permanen dan tidak bisa dibatalkan. Pastikan sudah download/export dulu kalau masih butuh datanya.
+        Login kamu sekarang (akun yang dipakai buka halaman ini) yang dipakai buat autorisasi hapus — bukan akses anonim.
+      </p>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label>Hapus data sebelum tanggal</label>
+          <input type="date" id="deleteBeforeDate"/>
+        </div>
+        <button class="btn-secondary" style="border-color:var(--red-100,#f5c6c2);color:var(--red-600,#c0392b);" onclick="deleteBeforeDate()">
+          Hapus Sebelum Tanggal Ini
+        </button>
+        <button class="btn-secondary" style="border-color:var(--red-100,#f5c6c2);color:var(--red-600,#c0392b);" onclick="deleteAllHistory()">
+          Hapus SEMUA Data History
+        </button>
+      </div>
+      <div id="deleteStatus" style="font-size:13px;margin-top:8px;"></div>
+    </div>
   </main>
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp } from "./shared.js";
-    import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { ref, get, remove, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("export");
     document.body.style.visibility = "visible";
@@ -373,6 +394,84 @@
       if (val === undefined || val === null) return "—";
       return dec > 0 ? Number(val).toFixed(dec) : Math.round(val);
     }
+
+    // ===== ZONA BERBAHAYA: hapus data =====
+    // Dua-duanya pakai koneksi `db` yang sama dari shared.js, yang autentikasi-nya
+    // sudah lewat requireAuth() (email/password) begitu halaman ini kebuka -
+    // sengaja TIDAK pakai anonymous auth, supaya cuma akun yang di-whitelist
+    // di Firebase rules yang bisa menghapus, bukan siapapun yang buka linknya.
+
+    function setDeleteStatus(msg, isError) {
+      const el = document.getElementById("deleteStatus");
+      el.textContent = msg;
+      el.style.color = isError ? "var(--red-600,#c0392b)" : "var(--gray-600)";
+    }
+
+    window.deleteAllHistory = async function () {
+      const ok = confirm(
+        "Yakin mau HAPUS SEMUA data history? Tindakan ini permanen dan tidak bisa dibatalkan."
+      );
+      if (!ok) return;
+
+      setDeleteStatus("Menghapus semua data...", false);
+      try {
+        await remove(ref(db, "/history"));
+        setDeleteStatus("Semua data history berhasil dihapus.", false);
+        clearFilter();
+      } catch (e) {
+        console.error(e);
+        setDeleteStatus("Gagal menghapus: " + (e.message || e), true);
+      }
+    };
+
+    window.deleteBeforeDate = async function () {
+      const dateVal = document.getElementById("deleteBeforeDate").value;
+      if (!dateVal) {
+        setDeleteStatus("Pilih tanggal batasnya dulu.", true);
+        return;
+      }
+      const cutoff = new Date(dateVal);
+      cutoff.setHours(0, 0, 0, 0);
+      const cutoffMs = cutoff.getTime();
+
+      const ok = confirm(
+        "Yakin mau hapus semua data SEBELUM " + cutoff.toLocaleDateString("id-ID") +
+        "? Tindakan ini permanen dan tidak bisa dibatalkan."
+      );
+      if (!ok) return;
+
+      setDeleteStatus("Mencari data yang perlu dihapus...", false);
+      try {
+        const snap = await get(ref(db, "/history"));
+        if (!snap.exists()) {
+          setDeleteStatus("Tidak ada data di /history.", false);
+          return;
+        }
+
+        // Kumpulkan dulu key-key yang match, baru hapus satu-satu - lebih
+        // aman daripada remove() langsung per anak sambil masih iterasi.
+        const keysToDelete = [];
+        snap.forEach(childSnap => {
+          const ts = pushIdToTimestamp(childSnap.key);
+          if (ts < cutoffMs) keysToDelete.push(childSnap.key);
+        });
+
+        if (keysToDelete.length === 0) {
+          setDeleteStatus("Tidak ada data sebelum tanggal itu.", false);
+          return;
+        }
+
+        setDeleteStatus("Menghapus " + keysToDelete.length + " data...", false);
+        for (const key of keysToDelete) {
+          await remove(child(ref(db, "/history"), key));
+        }
+        setDeleteStatus(keysToDelete.length + " data berhasil dihapus.", false);
+        clearFilter();
+      } catch (e) {
+        console.error(e);
+        setDeleteStatus("Gagal menghapus: " + (e.message || e), true);
+      }
+    };
   </script>
 </body>
 </html>
