@@ -274,23 +274,47 @@
         <div class="info-row"><span>Sumber daya</span><span class="info-val">Adaptor 5V/2A</span></div>
         <div class="info-row"><span>Interval baca</span><span class="info-val">5 detik</span></div>
         <div class="info-row"><span>Reset terakhir</span><span class="info-val" id="lastResetReason">—</span></div>
+        <button id="btnRestart" style="margin-top:12px;width:100%;padding:9px 0;border-radius:8px;border:1px solid var(--gray-100);background:#fff;color:var(--gray-600);font-size:13px;cursor:pointer;">
+          Restart Device
+        </button>
+        <div id="restartStatus" style="font-size:12px;margin-top:6px;color:var(--gray-400);"></div>
       </div>
     </div>
   </main>
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, WATER_LEVEL_OK_CM } from "./shared.js";
-    import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML = buildSidebar("dashboard");
     document.body.style.visibility = "visible";
 
     requireAuth(() => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
+      document.getElementById("btnRestart").addEventListener("click", restartDevice);
       listenData();
       watchStale();
       listenResetReason();
     });
+
+    // Perintah restart jarak jauh: cuma nulis flag ke Firebase, ESP32 yang
+    // baca & eksekusi sendiri (lihat firebaseTask di firmware). Device
+    // WAJIB online (WiFi + Firebase nyambung) buat nerima perintah ini -
+    // kalau device lagi offline, restart jarak jauh nggak akan ke-apply
+    // sampai dia balik online sendiri.
+    async function restartDevice() {
+      const ok = confirm("Kirim perintah restart ke device? Device akan reboot dalam beberapa detik.");
+      if (!ok) return;
+      const status = document.getElementById("restartStatus");
+      try {
+        await set(ref(db, "/commands/restart"), true);
+        status.textContent = "Perintah terkirim — device restart dalam ~5 detik (kalau sedang online).";
+        status.style.color = "var(--gray-400)";
+      } catch (e) {
+        status.textContent = "Gagal kirim perintah: " + (e.message || e);
+        status.style.color = "var(--red-600, #c0392b)";
+      }
+    }
 
     const RESET_REASON_LABEL = {
       poweron: "Power-on normal",
