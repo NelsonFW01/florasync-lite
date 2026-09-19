@@ -117,8 +117,9 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp } from "./shared.js";
-    import { ref, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound } from "./shared.js";
+    import { ref, query, orderByKey, startAt, endAt, limitToLast, get }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("history");
     document.body.style.visibility = "visible";
@@ -130,56 +131,87 @@
     document.getElementById("dateTo").value   = today.toISOString().split("T")[0];
     document.getElementById("dateFrom").value = weekAgo.toISOString().split("T")[0];
 
-    let allData = [];
+    // Batas aman untuk tombol "Semua Data" - histori bisa berisi puluhan
+    // ribu entri (backfill 7 hari @ tiap 5 detik = ratusan ribu tick,
+    // walau cuma sebagian yang tersimpan sebagai history). Tanpa batas ini,
+    // "Semua Data" bisa narik semua entri sekaligus dan bikin halaman lemot
+    // atau timeout - persis gejala yang bikin History kerasa lambat/error.
+    const ALL_DATA_LIMIT = 5000;
 
     requireAuth(async () => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
-      document.getElementById("btnFilter").addEventListener("click", filterAndRender);
+      document.getElementById("btnFilter").addEventListener("click", loadAndRender);
       document.getElementById("btnAll").addEventListener("click", () => {
         document.getElementById("dateFrom").value = "";
         document.getElementById("dateTo").value   = "";
-        filterAndRender();
+        loadAndRender();
       });
 
-      await loadData();
-      filterAndRender();
+      await loadAndRender();
     });
 
-    async function loadData() {
-      const snap = await get(ref(db, "/history"));
-      allData = [];
-      if (snap.exists()) {
-        snap.forEach(child => {
-          const d  = child.val();
-          d._key   = child.key;
-          d._ts    = pushIdToTimestamp(child.key); // epoch ms asli, BUKAN Number(key)
-          allData.push(d);
-        });
-        allData.sort((a, b) => b._ts - a._ts);
-      }
-    }
+    // Ambil data LANGSUNG dalam rentang tanggal yang dipilih via orderByKey()
+    // + startAt()/endAt() - Firebase cuma mengirim data yang cocok, tidak
+    // download seluruh /history lalu difilter di browser seperti sebelumnya.
+    async function loadAndRender() {
+      const tbody = document.getElementById("tableBody");
+      const cards = document.getElementById("cardsBody");
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Memuat data...</td></tr>`;
+      cards.innerHTML = `<div class="empty-state">Memuat data...</div>`;
 
-    function filterAndRender() {
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
-      const tbody   = document.getElementById("tableBody");
-      const cards   = document.getElementById("cardsBody");
 
-      let filtered = [...allData];
+      let q = ref(db, "/history");
+      let capped = false;
 
-      if (fromVal) {
-        const from = new Date(fromVal).getTime();
-        filtered = filtered.filter(d => d._ts >= from);
+      if (fromVal || toVal) {
+        const fromMs = fromVal ? new Date(fromVal).getTime() : 0;
+        let toMs;
+        if (toVal) {
+          const to = new Date(toVal);
+          to.setHours(23, 59, 59, 999);
+          toMs = to.getTime();
+        } else {
+          toMs = Date.now();
+        }
+        q = query(q, orderByKey(),
+                   startAt(timestampToPushIdBound(fromMs, false)),
+                   endAt(timestampToPushIdBound(toMs, true)));
+      } else {
+        // "Semua Data": batasi ke ALL_DATA_LIMIT entri TERBARU biar tidak
+        // menarik seluruh histori sekaligus.
+        q = query(q, limitToLast(ALL_DATA_LIMIT));
       }
-      if (toVal) {
-        const to = new Date(toVal);
-        to.setHours(23, 59, 59, 999);
-        filtered = filtered.filter(d => d._ts <= to.getTime());
+
+      const snap = await get(q);
+      const data = [];
+      if (snap.exists()) {
+        snap.forEach(child => {
+          const d = child.val();
+          d._key = child.key;
+          d._ts  = pushIdToTimestamp(child.key);
+          data.push(d);
+        });
+        data.sort((a, b) => b._ts - a._ts);
       }
+      // limitToLast() cuma dipakai saat "Semua Data" (tanpa filter tanggal).
+      // Kalau hasilnya pas sebanyak ALL_DATA_LIMIT, kemungkinan besar masih
+      // ada data lebih lama yang terpotong - beri tahu di recordInfo.
+      if (!(fromVal || toVal) && data.length >= ALL_DATA_LIMIT) capped = true;
+
+      render(data, !(fromVal || toVal), capped);
+    }
+
+    function render(filtered, isAll, capped) {
+      const tbody = document.getElementById("tableBody");
+      const cards = document.getElementById("cardsBody");
 
       document.getElementById("recordInfo").textContent =
         filtered.length + " data ditemukan" +
-        (fromVal || toVal ? " dalam rentang yang dipilih" : " (total)");
+        (isAll
+          ? (capped ? ` (dibatasi ${ALL_DATA_LIMIT} data terbaru - pakai filter tanggal untuk melihat data lebih lama)` : " (total)")
+          : " dalam rentang yang dipilih");
 
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini.</td></tr>`;
