@@ -179,8 +179,9 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp } from "./shared.js";
-    import { ref, get, remove, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound } from "./shared.js";
+    import { ref, get, remove, child, query, orderByKey, startAt, endAt, limitToLast }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("export");
     document.body.style.visibility = "visible";
@@ -218,6 +219,8 @@
       box.textContent = msg;
     }
 
+    const EXPORT_ALL_LIMIT = 5000; // batas aman kalau tidak ada filter tanggal sama sekali
+
     window.loadPreview = async function() {
       showError(null);
       const fromVal = document.getElementById("dateFrom").value;
@@ -226,8 +229,27 @@
       tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Memuat...</td></tr>`;
 
       let data = [];
+      let capped = false;
       try {
-        const snap = await get(ref(db, "/history"));
+        let q = ref(db, "/history");
+        if (fromVal || toVal) {
+          const fromMs = fromVal ? new Date(fromVal).getTime() : 0;
+          let toMs;
+          if (toVal) {
+            const to = new Date(toVal);
+            to.setHours(23, 59, 59, 999);
+            toMs = to.getTime();
+          } else {
+            toMs = Date.now();
+          }
+          q = query(q, orderByKey(),
+                     startAt(timestampToPushIdBound(fromMs, false)),
+                     endAt(timestampToPushIdBound(toMs, true)));
+        } else {
+          q = query(q, limitToLast(EXPORT_ALL_LIMIT));
+        }
+
+        const snap = await get(q);
         if (snap.exists()) {
           snap.forEach(child => {
             const d = child.val();
@@ -236,6 +258,7 @@
             data.push(d);
           });
         }
+        if (!(fromVal || toVal) && data.length >= EXPORT_ALL_LIMIT) capped = true;
       } catch (err) {
         console.error(err);
         showError("Gagal mengambil data dari Firebase: " + err.message);
@@ -243,20 +266,12 @@
         return;
       }
 
-      if (fromVal) {
-        const from = new Date(fromVal).getTime();
-        data = data.filter(d => d._ts >= from);
-      }
-      if (toVal) {
-        const to = new Date(toVal);
-        to.setHours(23, 59, 59, 999);
-        data = data.filter(d => d._ts <= to.getTime());
-      }
-
       data.sort((a, b) => b._ts - a._ts);
       window._exportData = data;
 
-      document.getElementById("previewCount").textContent = data.length + " record ditemukan";
+      document.getElementById("previewCount").textContent =
+        data.length + " record ditemukan" +
+        (capped ? ` (dibatasi ${EXPORT_ALL_LIMIT} terbaru - pakai filter tanggal untuk ambil data lebih lama)` : "");
       document.getElementById("btnDownload").disabled = data.length === 0;
 
       if (data.length === 0) {
@@ -442,7 +457,12 @@
 
       setDeleteStatus("Mencari data yang perlu dihapus...", false);
       try {
-        const snap = await get(ref(db, "/history"));
+        // endAt pakai (cutoffMs - 1) + batas ATAS supaya mencakup semua key
+        // dengan timestamp <= cutoffMs-1, alias timestamp < cutoffMs persis
+        // seperti logika lama (ts < cutoffMs).
+        const q = query(ref(db, "/history"), orderByKey(),
+                          endAt(timestampToPushIdBound(cutoffMs - 1, true)));
+        const snap = await get(q);
         if (!snap.exists()) {
           setDeleteStatus("Tidak ada data di /history.", false);
           return;
@@ -452,8 +472,7 @@
         // aman daripada remove() langsung per anak sambil masih iterasi.
         const keysToDelete = [];
         snap.forEach(childSnap => {
-          const ts = pushIdToTimestamp(childSnap.key);
-          if (ts < cutoffMs) keysToDelete.push(childSnap.key);
+          keysToDelete.push(childSnap.key);
         });
 
         if (keysToDelete.length === 0) {
