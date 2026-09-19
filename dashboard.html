@@ -418,9 +418,14 @@
       setVal("d_ldr",   d.ldrValue,     0, "ADC");
       setVal("d_water", d.waterLevel,   1, "cm");
 
-      setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v > 30 ? "warning" : "normal");
-      setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v > 80 ? "warning" : "normal");
-      setBadge("b_soil",  d.soilMoisture, v => v < 1500 ? "danger" : v < 2000 ? "warning" : "normal");
+      // Ambang di bawah HARUS sama arah & nilainya dengan florasync_firmware.ino /
+      // Sel 2 notebook simulasi, supaya badge "Normal/Perhatian/Bahaya" cocok
+      // dengan kapan aktuator beneran menyala - bukan angka sembarang.
+      setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v >= 31 ? "warning" : "normal");
+      setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v >= 82 ? "warning" : "normal");
+      // Sensor tanah KAPASITIF: ADC BESAR = KERING (kebalikan sensor resistif).
+      // SOIL_THRESHOLD_ON/OFF = 3100/3000 di firmware & notebook simulasi.
+      setBadge("b_soil",  d.soilMoisture, v => v >= 3100 ? "danger" : v >= 3000 ? "warning" : "normal");
       setBadge("b_ldr",   d.ldrValue,     () => "normal");
       setBadge("b_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
 
