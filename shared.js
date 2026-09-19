@@ -48,6 +48,26 @@ export function pushIdToTimestamp(pushId) {
   return ts;
 }
 
+// Kebalikan dari pushIdToTimestamp(): dari epoch ms, bikin key batas bawah
+// atau batas atas yang valid untuk orderByKey()+startAt()/endAt() di RTDB.
+// Karena 8 karakter pertama push-id terurut sama dengan urutan waktu, query
+// rentang tanggal bisa dilakukan LANGSUNG oleh server Firebase (cuma
+// download data dalam rentang itu), tidak perlu tarik seluruh /history lalu
+// difilter di browser - jauh lebih cepat begitu datanya sudah ribuan entri.
+export function timestampToPushIdBound(ms, isUpperBound) {
+  const chars = [];
+  let t = Math.max(0, Math.floor(ms));
+  for (let i = 0; i < 8; i++) {
+    chars.push(PUSH_ID_CHARS[t % 64]);
+    t = Math.floor(t / 64);
+  }
+  chars.reverse();
+  // Bagian acak (12 karakter) diisi ujung alfabet supaya batas bawah pasti
+  // <= semua key ber-timestamp sama, dan batas atas pasti >= semuanya.
+  const pad = isUpperBound ? PUSH_ID_CHARS[63] : PUSH_ID_CHARS[0];
+  return chars.join("") + pad.repeat(12);
+}
+
 // ── Water level thresholds (harus sama dengan firmware .ino) ──────────────
 // WATER_LEVEL_EMPTY_CM / WATER_LEVEL_OK_CM di florasync_firmware.ino.
 // Sensor mengukur JARAK sensor->permukaan air, jadi angka BESAR = air
