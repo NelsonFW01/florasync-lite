@@ -156,7 +156,9 @@
       </button>
     </div>
 
-    <div class="card" style="border:1px solid var(--red-100,#f5c6c2);margin-top:1.5rem;">
+    <!-- Tersembunyi secara default. Baru ditampilkan lewat JS di bawah
+         kalau yang login adalah akun admin (ADMIN_EMAIL). -->
+    <div class="card" id="dangerZone" style="display:none;border:1px solid var(--red-100,#f5c6c2);margin-top:1.5rem;">
       <div class="card-title" style="color:var(--red-600,#c0392b);">⚠️ Zona Berbahaya — Hapus Data</div>
       <p style="font-size:13px;color:var(--gray-400);margin:0 0 1rem;">
         Tindakan ini permanen dan tidak bisa dibatalkan. Pastikan sudah download/export dulu kalau masih butuh datanya.
@@ -208,8 +210,19 @@
       loadPreview();
     };
 
-    requireAuth(() => {
+    // Zona Berbahaya (hapus data) cuma ditampilkan untuk akun admin.
+    // Ini hanya menyembunyikan tampilan. Yang benar-benar mengunci izin
+    // hapus tetap Firebase Rules - jadi email di sini HARUS sama dengan
+    // email admin di Rules.
+    const ADMIN_EMAIL = "nagoyaflora@gmail.com";
+
+    requireAuth((user) => {
       document.getElementById("logoutBtn").addEventListener("click", logout);
+
+      const isAdmin = (user.email || "").toLowerCase() === ADMIN_EMAIL;
+      if (isAdmin) {
+        document.getElementById("dangerZone").style.display = "";
+      }
     });
 
     function showError(msg) {
