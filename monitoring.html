@@ -116,7 +116,7 @@
             </div>
             Pompa Air
           </div>
-          <span id="mTagPump" class="tag-off">OFF</span>
+          <span id="mTagPump" class="tag-off">Memeriksa…</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
@@ -128,7 +128,7 @@
             </div>
             Kipas
           </div>
-          <span id="mTagFan" class="tag-off">OFF</span>
+          <span id="mTagFan" class="tag-off">Memeriksa…</span>
         </div>
       </div>
 
@@ -295,6 +295,11 @@
           pendingActuator = d;
         }
       });
+
+      // Kalau 12 detik belum ada konfirmasi online (mis. database kosong
+      // atau device mati), keluar dari status "Memeriksa…" -> tampilkan
+      // peringatan offline. Tanpa ini status bisa menggantung selamanya.
+      setTimeout(() => { if (!confirmedOnline) setStale(); }, 12000);
     });
 
     // Sama seperti di dashboard: Firebase selalu ngasih nilai TERAKHIR yang

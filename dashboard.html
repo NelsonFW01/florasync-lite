@@ -116,7 +116,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span id="deviceStatus" class="badge badge-offline">
-          <span class="dot"></span> Offline
+          <span class="dot"></span> Memeriksa…
         </span>
         <span id="lastUpdate" style="font-size:12px;color:var(--gray-400);">—</span>
       </div>
@@ -236,8 +236,8 @@
           </svg>
         </div>
         <div class="scene-caption">
-          <span>💧 Pompa: <b id="scenePumpState">OFF</b></span>
-          <span>🌀 Kipas: <b id="sceneFanState">OFF</b></span>
+          <span>💧 Pompa: <b id="scenePumpState">Memeriksa…</b></span>
+          <span>🌀 Kipas: <b id="sceneFanState">Memeriksa…</b></span>
         </div>
       </div>
 
@@ -251,7 +251,7 @@
             </div>
             Pompa Air
           </div>
-          <span id="tagPump" class="tag-off">OFF</span>
+          <span id="tagPump" class="tag-off">Memeriksa…</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
@@ -260,7 +260,7 @@
             </div>
             Kipas
           </div>
-          <span id="tagFan" class="tag-off">OFF</span>
+          <span id="tagFan" class="tag-off">Memeriksa…</span>
         </div>
       </div>
 
@@ -295,6 +295,12 @@
       listenData();
       watchStale();
       listenResetReason();
+
+      // Kalau 12 detik belum ada konfirmasi online (mis. database kosong
+      // atau device mati), keluar dari status "Memeriksa…" -> Offline.
+      // Tanpa ini, kalau tidak ada data sama sekali, status akan
+      // menggantung di "Memeriksa…" selamanya.
+      setTimeout(() => { if (!confirmedOnline) setOffline(); }, 12000);
     });
 
     // Perintah restart jarak jauh: cuma nulis flag ke Firebase, ESP32 yang
