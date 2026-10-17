@@ -83,7 +83,7 @@ unsigned long historyDroppedCount = 0;
 const float TEMP_FAN_ON   = 31.0;   // kipas ON jika suhu > 31°C
 const float TEMP_FAN_OFF  = 29.0;   // kipas OFF jika suhu < 29°C
 const float HUM_FAN_ON    = 82.0;   // kipas ON jika RH > 82%
-const float HUM_FAN_OFF   = 78.0;   // kipas OFF jika RH < 78%
+const float HUM_FAN_OFF   = 80.0;   // kipas OFF jika RH < 80%
 bool fanState = false;
 
 // ========== TIMING ==========
