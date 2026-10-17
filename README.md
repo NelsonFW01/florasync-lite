@@ -66,7 +66,7 @@ Web App Dashboard (HTML/CSS/JS)
 | Kondisi | Aksi |
 |---|---|
 | Tanah kering (ADC > 3100, sensor kapasitif: ADC besar = kering) | Pompa menyala selama 30 detik (berhenti lebih awal jika ADC < 3000) |
-| Suhu udara > 31°C | Kipas menyala (mati lagi saat suhu < 29°C **dan** kelembaban < 78%) |
+| Suhu udara > 31°C | Kipas menyala (mati lagi saat suhu < 29°C **dan** kelembaban < 80%) |
 | Kelembaban udara > 82% | Kipas menyala |
 | Jeda antarpenyiraman | 60 detik |
 | Jarak sensor ke air ≥ 18,5 cm (tandon kosong) | Pompa diblokir + peringatan di dashboard |

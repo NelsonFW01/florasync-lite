@@ -135,8 +135,16 @@ export const ACT_TEXT = {
 export const STATUS_HINT = {
   checking: "Sedang memeriksa koneksi perangkat (maks. ±12 detik). Status pompa & kipas belum diketahui.",
   online:   "",
-  offline:  "Perangkat tidak mengirim data, jadi status pompa & kipas tidak diketahui. Status terakhir sengaja tidak ditampilkan karena bisa jadi sudah tidak berlaku."
+  offline:  "Perangkat tidak mengirim data (mati atau putus WiFi). Yang tampil adalah status TERAKHIR yang tercatat, belum tentu sama dengan kondisi sekarang."
 };
+
+// Teks aktuator saat perangkat offline: tampilkan status terakhir yang tercatat
+// ("Terakhir ON" / "Terakhir OFF"), supaya jelas itu bukan kondisi saat ini.
+// "Tidak diketahui" hanya kalau memang belum pernah ada data aktuator sama sekali.
+export function actOfflineText(isOn) {
+  if (isOn === undefined || isOn === null) return ACT_TEXT.unknown;
+  return "Terakhir " + (isOn ? "ON" : "OFF");
+}
 
 // Build sidebar HTML
 export function buildSidebar(activePage) {

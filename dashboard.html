@@ -292,7 +292,7 @@
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, WATER_LEVEL_OK_CM,
-             soilLevel, lightLevel, ACT_TEXT, STATUS_HINT } from "./shared.js";
+             soilLevel, lightLevel, actOfflineText, STATUS_HINT } from "./shared.js";
     import { ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML = buildSidebar("dashboard");
@@ -367,6 +367,7 @@
     let lastSeen        = 0;
     let confirmedOnline = false;
     let pendingActuator = null;
+    let lastActuator    = {};   // status aktuator terakhir yang tercatat (dipakai saat offline)
 
     function watchStale() {
       setInterval(() => {
@@ -384,6 +385,7 @@
       onValue(ref(db, "/actuator"), snap => {
         const d = snap.val();
         if (!d) return;
+        lastActuator = d;
         if (confirmedOnline) {
           setActuator("Pump", d.pump);
           setActuator("Fan",  d.fan);
@@ -519,12 +521,13 @@
     }
 
     function markActuatorUnknown(name) {
+      const txt = actOfflineText(lastActuator[name.toLowerCase()]); // "Terakhir ON/OFF"
       const tag = document.getElementById("tag" + name);
       tag.className  = "tag-off";
-      tag.textContent = ACT_TEXT.unknown;
+      tag.textContent = txt;
       const icon = document.getElementById("icon" + name);
       icon.className = "act-icon act-off";
-      document.getElementById("scene" + name + "State").textContent = ACT_TEXT.unknown;
+      document.getElementById("scene" + name + "State").textContent = txt;
       document.getElementById("sceneWrap").classList.remove(name.toLowerCase() + "-on");
     }
 

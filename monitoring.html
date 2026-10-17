@@ -149,6 +149,7 @@
         <div class="card-title">Batas Otomatisasi</div>
         <div class="threshold-row"><span>Kipas menyala (suhu)</span><span class="threshold-val">&gt; 31 °C</span></div>
         <div class="threshold-row"><span>Kipas menyala (kelembaban udara)</span><span class="threshold-val">&gt; 82 %</span></div>
+        <div class="threshold-row"><span>Kipas mati lagi</span><span class="threshold-val">&lt; 29 °C dan &lt; 80 %</span></div>
         <div class="threshold-row"><span>Pompa menyala (tanah kering)</span><span class="threshold-val" id="thPumpOn">—</span></div>
         <div class="threshold-row"><span>Lama penyiraman</span><span class="threshold-val">30 detik</span></div>
         <div class="threshold-row"><span>Jeda antarpenyiraman</span><span class="threshold-val">60 detik</span></div>
@@ -186,7 +187,7 @@
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, pushIdToTimestamp,
-             soilLevel, lightLevel, ACT_TEXT, STATUS_HINT,
+             soilLevel, lightLevel, actOfflineText, STATUS_HINT,
              SOIL_DRY_ADC, SOIL_WET_ADC, LDR_DARK_ADC, LDR_BRIGHT_ADC } from "./shared.js";
     import { ref, onValue, query, limitToLast, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -263,6 +264,7 @@
     let lastSeen        = 0;
     let confirmedOnline = false;
     let pendingActuator = null;
+    let lastActuator    = {};   // status aktuator terakhir yang tercatat (dipakai saat offline)
 
     async function loadRecentHistoryIntoCharts() {
       try {
@@ -334,6 +336,7 @@
       onValue(ref(db, "/actuator"), snap => {
         const d = snap.val();
         if (!d) return;
+        lastActuator = d;
         if (confirmedOnline) {
           setAct("mTagPump", "mIconPump", d.pump);
           setAct("mTagFan",  "mIconFan",  d.fan);
@@ -385,14 +388,14 @@
       confirmedOnline = false;
       lastSeen        = 0;
       pendingActuator = null;
-      markActUnknown("mTagPump", "mIconPump");
-      markActUnknown("mTagFan",  "mIconFan");
+      markActUnknown("mTagPump", "mIconPump", "pump");
+      markActUnknown("mTagFan",  "mIconFan",  "fan");
       setStatusHint("offline");
     }
 
-    function markActUnknown(tagId, iconId) {
+    function markActUnknown(tagId, iconId, key) {
       document.getElementById(tagId).className   = "tag-off";
-      document.getElementById(tagId).textContent = ACT_TEXT.unknown;
+      document.getElementById(tagId).textContent = actOfflineText(lastActuator[key]); // "Terakhir ON/OFF"
       document.getElementById(iconId).className  = "act-icon act-off";
     }
 
