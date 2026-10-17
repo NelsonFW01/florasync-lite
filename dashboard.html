@@ -44,6 +44,11 @@
     .info-row:last-child { border-bottom: none; }
     .info-val { font-weight: 600; color: #1a1a1a; }
 
+    /* Penjelasan singkat di bawah badge kategori sensor (tanah & cahaya) */
+    .stat-hint { font-size: 11px; color: var(--gray-400); margin-top: 6px; line-height: 1.35; }
+    /* Penjelasan status perangkat (menunggu data / offline) */
+    .status-hint { font-size: 12px; color: var(--gray-600); background: var(--gray-50); border-radius: 8px; padding: 8px 10px; margin-top: 10px; line-height: 1.4; display: none; }
+
     /* ===== Visualisasi Sistem (pompa + kipas animasi) ===== */
     .scene-card { padding: 1.25rem; }
     .scene-wrap { display:flex; justify-content:center; }
@@ -161,7 +166,8 @@
           Kelembaban Tanah
         </div>
         <div class="stat-value" id="d_soil">—<span class="stat-unit"> ADC</span></div>
-        <span id="b_soil" class="badge badge-normal">Normal</span>
+        <span id="b_soil" class="badge badge-offline">Menunggu data</span>
+        <div class="stat-hint" id="h_soil"></div>
       </div>
 
       <div class="stat-card">
@@ -170,7 +176,8 @@
           Intensitas Cahaya
         </div>
         <div class="stat-value" id="d_ldr">—<span class="stat-unit"> ADC</span></div>
-        <span id="b_ldr" class="badge badge-normal">Normal</span>
+        <span id="b_ldr" class="badge badge-offline">Menunggu data</span>
+        <div class="stat-hint" id="h_ldr"></div>
       </div>
 
       <div class="stat-card">
@@ -236,8 +243,8 @@
           </svg>
         </div>
         <div class="scene-caption">
-          <span>💧 Pompa: <b id="scenePumpState">Memeriksa…</b></span>
-          <span>🌀 Kipas: <b id="sceneFanState">Memeriksa…</b></span>
+          <span>💧 Pompa: <b id="scenePumpState">Menunggu data…</b></span>
+          <span>🌀 Kipas: <b id="sceneFanState">Menunggu data…</b></span>
         </div>
       </div>
 
@@ -251,7 +258,7 @@
             </div>
             Pompa Air
           </div>
-          <span id="tagPump" class="tag-off">Memeriksa…</span>
+          <span id="tagPump" class="tag-off">Menunggu data…</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
@@ -260,14 +267,15 @@
             </div>
             Kipas
           </div>
-          <span id="tagFan" class="tag-off">Memeriksa…</span>
+          <span id="tagFan" class="tag-off">Menunggu data…</span>
         </div>
+        <div class="status-hint" id="statusHint"></div>
       </div>
 
       <!-- Info sistem -->
       <div class="card">
         <div class="card-title">Informasi Sistem</div>
-        <div class="info-row"><span>Tanaman</span><span class="info-val">Pakcoy, Cabai, Kemangi</span></div>
+        <div class="info-row"><span>Tanaman</span><span class="info-val">Jeruk Limau, Cabe Rawit, Tomat Cherry</span></div>
         <div class="info-row"><span>Dimensi</span><span class="info-val">55 × 45 × 40 cm</span></div>
         <div class="info-row"><span>Mikrokontroler</span><span class="info-val">ESP32</span></div>
         <div class="info-row"><span>Sensor</span><span class="info-val">DHT22, Soil, LDR, HC-SR04</span></div>
@@ -283,7 +291,8 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, WATER_LEVEL_OK_CM } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, WATER_LEVEL_OK_CM,
+             soilLevel, lightLevel, ACT_TEXT, STATUS_HINT } from "./shared.js";
     import { ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML = buildSidebar("dashboard");
@@ -295,6 +304,7 @@
       listenData();
       watchStale();
       listenResetReason();
+      setStatusHint("checking"); // jelaskan dari awal kenapa aktuator belum menampilkan ON/OFF
 
       // Kalau 12 detik belum ada konfirmasi online (mis. database kosong
       // atau device mati), keluar dari status "Memeriksa…" -> Offline.
@@ -431,8 +441,10 @@
       setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v >= 82 ? "warning" : "normal");
       // Sensor tanah KAPASITIF: ADC BESAR = KERING (kebalikan sensor resistif).
       // SOIL_THRESHOLD_ON/OFF = 3100/3000 di firmware & notebook simulasi.
-      setBadge("b_soil",  d.soilMoisture, v => v >= 3100 ? "danger" : v >= 3000 ? "warning" : "normal");
-      setBadge("b_ldr",   d.ldrValue,     () => "normal");
+      // Kategori (Kering/Lembap/Basah, Rendah/Cukup/Tinggi) dihitung di shared.js
+      // dari batas kalibrasi; angka ADC mentah tetap tampil di atas.
+      setLevelBadge("b_soil", "h_soil", soilLevel(d.soilMoisture));
+      setLevelBadge("b_ldr",  "h_ldr",  lightLevel(d.ldrValue));
       setBadge("b_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
 
       updateMiniTank(d.waterLevel);
@@ -467,6 +479,24 @@
       const el = document.getElementById("deviceStatus");
       el.className = "badge badge-online";
       el.innerHTML = '<span class="dot"></span> Online';
+      setStatusHint("online");
+    }
+
+    function setStatusHint(state) {
+      const el  = document.getElementById("statusHint");
+      const txt = STATUS_HINT[state] || "";
+      el.textContent   = txt;
+      el.style.display = txt ? "block" : "none";
+    }
+
+    // Badge kategori dengan teks + penjelasan singkat (tanah & cahaya).
+    function setLevelBadge(badgeId, hintId, level) {
+      const el = document.getElementById(badgeId);
+      const hint = document.getElementById(hintId);
+      if (!level) return;
+      el.className   = "badge " + level.badge;
+      el.textContent = level.label;
+      hint.textContent = level.hint;
     }
 
     // Firebase TIDAK otomatis menghapus/reset /actuator kalau ESP32-nya
@@ -485,15 +515,16 @@
       pendingActuator = null;
       markActuatorUnknown("Pump");
       markActuatorUnknown("Fan");
+      setStatusHint("offline");
     }
 
     function markActuatorUnknown(name) {
       const tag = document.getElementById("tag" + name);
       tag.className  = "tag-off";
-      tag.textContent = "Offline";
+      tag.textContent = ACT_TEXT.unknown;
       const icon = document.getElementById("icon" + name);
       icon.className = "act-icon act-off";
-      document.getElementById("scene" + name + "State").textContent = "Offline";
+      document.getElementById("scene" + name + "State").textContent = ACT_TEXT.unknown;
       document.getElementById("sceneWrap").classList.remove(name.toLowerCase() + "-on");
     }
 

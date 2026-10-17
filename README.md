@@ -11,7 +11,7 @@
 FloraSync Lite adalah sistem greenhouse portabel skala mikro berbasis Internet of Things (IoT) yang dirancang untuk mendukung kegiatan urban farming di lingkungan perkotaan. Sistem ini memungkinkan pemantauan dan pengendalian kondisi lingkungan tanaman secara real-time melalui aplikasi web, dengan pendekatan desain daya rendah (*low-power design*) menggunakan adaptor 5V/2A.
 
 **Dimensi greenhouse:** 55 × 45 × 40 cm  
-**Tanaman:** Pakcoy, Cabai Rawit, Kemangi  
+**Tanaman:** Jeruk Limau, Cabe Rawit, Tomat Cherry  
 **Mikrokontroler:** ESP32  
 
 ---
@@ -65,13 +65,22 @@ Web App Dashboard (HTML/CSS/JS)
 
 | Kondisi | Aksi |
 |---|---|
-| Kelembaban tanah < 2000 ADC | Pompa ON selama 10 detik |
-| Suhu udara > 31°C | Kipas ON |
-| Kelembaban udara > 82% | Kipas ON |
-| Pasca penyiraman (90 detik) | Kipas ON |
-| Cooldown antar siram | 60 detik |
-| Jarak sensor ke air ≥ 18,5 cm (tandon kosong) | Pompa diblokir + alert di dashboard |
-| Jarak sensor ke air ≤ 12,5 cm | Air dianggap cukup, pompa boleh menyala |
+| Tanah kering (ADC > 3100, sensor kapasitif: ADC besar = kering) | Pompa menyala selama 30 detik (berhenti lebih awal jika ADC < 3000) |
+| Suhu udara > 31°C | Kipas menyala (mati lagi saat suhu < 29°C **dan** kelembaban < 78%) |
+| Kelembaban udara > 82% | Kipas menyala |
+| Jeda antarpenyiraman | 60 detik |
+| Jarak sensor ke air ≥ 18,5 cm (tandon kosong) | Pompa diblokir + peringatan di dashboard |
+| Jarak sensor ke air ≤ 18,0 cm | Air dianggap cukup, pompa boleh menyala |
+
+### Kategori sensor di web app
+
+Angka ADC mentah tetap ditampilkan, ditambah kategori agar mudah dipahami pengguna awam.
+Batas kategori ada di `shared.js` (satu tempat) dan perlu disesuaikan dengan hasil kalibrasi.
+
+| Sensor | Kategori (ADC) |
+|---|---|
+| Kelembaban tanah | Kering ≥ 3100 · Lembap 2500–3099 · Basah < 2500 |
+| Intensitas cahaya | Rendah (gelap) ≥ 3000 · Cukup 1000–2999 · Tinggi (terang) < 1000 |
 
 ---
 

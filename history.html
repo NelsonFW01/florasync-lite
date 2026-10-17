@@ -96,8 +96,8 @@
             <th>Timestamp</th>
             <th>Suhu (°C)</th>
             <th>Kelembaban Udara (%)</th>
-            <th>Kelembaban Tanah (ADC)</th>
-            <th>Cahaya (ADC)</th>
+            <th>Kelembaban Tanah (ADC &amp; kondisi)</th>
+            <th>Cahaya (ADC &amp; kondisi)</th>
             <th>Level Air (cm)</th>
             <th>Pompa</th>
             <th>Kipas</th>
@@ -117,7 +117,8 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound,
+             soilLevel, lightLevel } from "./shared.js";
     import { ref, query, orderByKey, startAt, endAt, limitToLast, get }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -225,8 +226,8 @@
           <td>${tStr}</td>
           <td>${fNum(d.temperature, 1)}</td>
           <td>${fNum(d.humidity,    1)}</td>
-          <td>${fNum(d.soilMoisture, 0)}</td>
-          <td>${fNum(d.ldrValue,    0)}</td>
+          <td>${fNum(d.soilMoisture, 0)} ${catBadge(soilLevel(d.soilMoisture))}</td>
+          <td>${fNum(d.ldrValue, 0)} ${catBadge(lightLevel(d.ldrValue))}</td>
           <td>${fNum(d.waterLevel,  1)}</td>
           <td><span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></td>
           <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
@@ -244,8 +245,8 @@
           <div class="hist-grid">
             <div class="hist-field"><span class="hist-field-label">Suhu</span><span class="hist-field-val">${fNum(d.temperature, 1)} °C</span></div>
             <div class="hist-field"><span class="hist-field-label">Humid Udara</span><span class="hist-field-val">${fNum(d.humidity, 1)} %</span></div>
-            <div class="hist-field"><span class="hist-field-label">Tanah</span><span class="hist-field-val">${fNum(d.soilMoisture, 0)} ADC</span></div>
-            <div class="hist-field"><span class="hist-field-label">Cahaya</span><span class="hist-field-val">${fNum(d.ldrValue, 0)} ADC</span></div>
+            <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Tanah</span><span class="hist-field-val">${fNum(d.soilMoisture, 0)} ADC ${catBadge(soilLevel(d.soilMoisture))}</span></div>
+            <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Cahaya</span><span class="hist-field-val">${fNum(d.ldrValue, 0)} ADC ${catBadge(lightLevel(d.ldrValue))}</span></div>
             <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Level Air</span><span class="hist-field-val">${fNum(d.waterLevel, 1)} cm</span></div>
           </div>
           <div class="hist-actuators">
@@ -269,6 +270,11 @@
       if (!ts || isNaN(ts)) return "—";
       const d = new Date(ts);
       return d.toLocaleDateString("id-ID") + " " + d.toLocaleTimeString("id-ID");
+    }
+
+    // Badge kategori (Kering/Lembap/Basah, Rendah/Cukup/Tinggi) di samping angka ADC.
+    function catBadge(level) {
+      return level ? `<span class="badge ${level.badge}">${level.label}</span>` : "";
     }
 
     function fNum(val, dec) {

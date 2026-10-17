@@ -73,7 +73,7 @@ export function timestampToPushIdBound(ms, isUpperBound) {
 // Sensor mengukur JARAK sensor->permukaan air, jadi angka BESAR = air
 // SEDIKIT. Kalau nilai ini diubah di firmware, ubah juga di sini.
 export const WATER_LEVEL_EMPTY_CM = 18.5;
-export const WATER_LEVEL_OK_CM    = 12.5;
+export const WATER_LEVEL_OK_CM    = 18.0; // sama dengan firmware (dulu 12.5 -> tidak sinkron)
 
 // Klasifikasi status air. Mengutamakan flag /sensor/waterEmpty (dihitung di
 // firmware dengan hysteresis + fail-safe sensor gagal) sebagai sumber
@@ -86,6 +86,57 @@ export function waterState(distanceCm, isEmptyFlag) {
   if (distanceCm > WATER_LEVEL_OK_CM) return "warning";
   return "normal";
 }
+
+// ── Kategori ramah-pengguna untuk sensor tanah & cahaya ───────────────────
+// Angka ADC mentah tidak bermakna bagi pengguna awam, jadi diterjemahkan ke
+// kategori. SEMUA batas ada di sini (satu tempat) supaya gampang disesuaikan
+// setelah kalibrasi ulang. Angka mentah tetap ditampilkan untuk kebutuhan teknis.
+//
+// Tanah (sensor KAPASITIF): ADC BESAR = KERING.
+//   SOIL_DRY_ADC  = SOIL_THRESHOLD_ON di firmware (3100): pompa menyala.
+//   SOIL_WET_ADC  = batas "basah" -> !! NILAI PERKIRAAN, isi dari hasil
+//   kalibrasi sensor dicelup air / tanah jenuh air !!
+export const SOIL_DRY_ADC = 3100;
+export const SOIL_WET_ADC = 2500;
+
+// Cahaya (LDR): diasumsikan ADC BESAR = GELAP (modul LDR dengan keluaran AO
+// umumnya begitu; sesuai data malam hari yang terbaca 4095).
+// !! Kedua batas ini PERKIRAAN - sesuaikan dengan kalibrasi LDR kalian !!
+export const LDR_DARK_ADC   = 3000; // >= ini  -> cahaya rendah
+export const LDR_BRIGHT_ADC = 1000; // <  ini  -> cahaya tinggi
+
+// Mengembalikan { label, badge, hint } atau null kalau datanya tidak ada.
+// "badge" = nama class badge di shared.css (badge-danger, badge-normal, dst).
+export function soilLevel(adc) {
+  if (adc === undefined || adc === null || isNaN(adc)) return null;
+  if (adc >= SOIL_DRY_ADC) return { label: "Kering", badge: "badge-danger",  hint: "Tanah kering, pompa akan menyiram otomatis" };
+  if (adc >= SOIL_WET_ADC) return { label: "Lembap", badge: "badge-normal",  hint: "Kelembaban tanah cukup" };
+  return                         { label: "Basah",  badge: "badge-online",  hint: "Tanah basah, tidak perlu disiram" };
+}
+
+export function lightLevel(adc) {
+  if (adc === undefined || adc === null || isNaN(adc)) return null;
+  if (adc >= LDR_DARK_ADC)   return { label: "Rendah", badge: "badge-warning", hint: "Gelap / cahaya kurang" };
+  if (adc >= LDR_BRIGHT_ADC) return { label: "Cukup",  badge: "badge-normal",  hint: "Cahaya cukup" };
+  return                           { label: "Tinggi", badge: "badge-online",  hint: "Cahaya terang" };
+}
+
+// Versi teks polos (untuk tabel History & export CSV/PDF), "" kalau tidak ada.
+export function soilText(adc) { const s = soilLevel(adc);  return s ? s.label : ""; }
+export function lightText(adc){ const s = lightLevel(adc); return s ? s.label : ""; }
+
+// ── Teks status perangkat/aktuator (dipakai Dashboard DAN Monitoring) ─────
+// Supaya kedua halaman menampilkan kata & penjelasan yang SAMA persis.
+// Ada 3 keadaan: memeriksa (belum tahu), online (tahu), offline (tidak tahu).
+export const ACT_TEXT = {
+  checking: "Menunggu data…",
+  unknown:  "Tidak diketahui"
+};
+export const STATUS_HINT = {
+  checking: "Sedang memeriksa koneksi perangkat (maks. ±12 detik). Status pompa & kipas belum diketahui.",
+  online:   "",
+  offline:  "Perangkat tidak mengirim data, jadi status pompa & kipas tidak diketahui. Status terakhir sengaja tidak ditampilkan karena bisa jadi sudah tidak berlaku."
+};
 
 // Build sidebar HTML
 export function buildSidebar(activePage) {

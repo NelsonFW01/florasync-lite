@@ -135,7 +135,9 @@
               <th>Suhu (°C)</th>
               <th>Kelembaban Udara (%)</th>
               <th>Kelembaban Tanah (ADC)</th>
+              <th>Kondisi Tanah</th>
               <th>Cahaya (ADC)</th>
+              <th>Kondisi Cahaya</th>
               <th>Level Air (cm)</th>
               <th>Pompa</th>
               <th>Kipas</th>
@@ -143,7 +145,7 @@
             </tr>
           </thead>
           <tbody id="previewBody">
-            <tr><td colspan="9" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
+            <tr><td colspan="11" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
           </tbody>
         </table>
       </div>
@@ -181,7 +183,8 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound,
+             soilText, lightText, SOIL_DRY_ADC, SOIL_WET_ADC, LDR_DARK_ADC, LDR_BRIGHT_ADC } from "./shared.js";
     import { ref, get, remove, child, query, orderByKey, startAt, endAt, limitToLast }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -239,7 +242,7 @@
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
       const tbody   = document.getElementById("previewBody");
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Memuat...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Memuat...</td></tr>`;
 
       let data = [];
       let capped = false;
@@ -275,7 +278,7 @@
       } catch (err) {
         console.error(err);
         showError("Gagal mengambil data dari Firebase: " + err.message);
-        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Gagal memuat data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Gagal memuat data.</td></tr>`;
         return;
       }
 
@@ -288,7 +291,7 @@
       document.getElementById("btnDownload").disabled = data.length === 0;
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
         return;
       }
 
@@ -299,7 +302,9 @@
           <td>${fNum(d.temperature, 1)}</td>
           <td>${fNum(d.humidity,    1)}</td>
           <td>${fNum(d.soilMoisture, 0)}</td>
+          <td>${soilText(d.soilMoisture)}</td>
           <td>${fNum(d.ldrValue,    0)}</td>
+          <td>${lightText(d.ldrValue)}</td>
           <td>${fNum(d.waterLevel,  1)}</td>
           <td>${d.pump ? "ON" : "OFF"}</td>
           <td>${d.fan  ? "ON" : "OFF"}</td>
@@ -343,13 +348,15 @@
     };
 
     function exportCSV(data) {
-      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"];
+      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Kondisi Tanah","Cahaya (ADC)","Kondisi Cahaya","Level Air (cm)","Pompa","Kipas","Trigger"];
       const rows   = data.map(d => [
         fmtTs(d._ts),
         fNum(d.temperature, 1),
         fNum(d.humidity,    1),
         fNum(d.soilMoisture, 0),
+        soilText(d.soilMoisture),
         fNum(d.ldrValue,    0),
+        lightText(d.ldrValue),
         fNum(d.waterLevel,  1),
         d.pump ? "ON" : "OFF",
         d.fan  ? "ON" : "OFF",
@@ -380,21 +387,29 @@
       doc.text("Digenerate: " + new Date().toLocaleString("id-ID"), 14, 23);
       doc.text("Total record: " + data.length, 14, 28);
 
+      // Legenda kategori (dari batas kalibrasi di shared.js). Pakai ">=" bukan
+      // simbol "≥" karena font bawaan jsPDF tidak punya glyph itu.
+      doc.setFontSize(8);
+      doc.text("Tanah: Kering >= " + SOIL_DRY_ADC + " ADC | Lembap " + SOIL_WET_ADC + "-" + (SOIL_DRY_ADC - 1) + " | Basah < " + SOIL_WET_ADC +
+               "     Cahaya: Rendah >= " + LDR_DARK_ADC + " ADC | Cukup " + LDR_BRIGHT_ADC + "-" + (LDR_DARK_ADC - 1) + " | Tinggi < " + LDR_BRIGHT_ADC, 14, 33);
+
       doc.autoTable({
-        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"]],
+        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Kondisi Tanah","Cahaya (ADC)","Kondisi Cahaya","Level Air (cm)","Pompa","Kipas","Trigger"]],
         body: data.map(d => [
           fmtTs(d._ts),
           fNum(d.temperature, 1),
           fNum(d.humidity,    1),
           fNum(d.soilMoisture, 0),
+          soilText(d.soilMoisture),
           fNum(d.ldrValue,    0),
+          lightText(d.ldrValue),
           fNum(d.waterLevel,  1),
           d.pump ? "ON" : "OFF",
           d.fan  ? "ON" : "OFF",
           fmtTrigger(d.trigger)
         ]),
-        startY: 34,
-        styles: { fontSize: 9, cellPadding: 3 },
+        startY: 38,
+        styles: { fontSize: 8, cellPadding: 2.5 },
         headStyles: { fillColor: [63, 109, 17], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [234, 243, 222] },
         margin: { left: 14, right: 14 },

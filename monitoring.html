@@ -49,6 +49,15 @@
     }
     .threshold-row:last-child { border-bottom: none; }
     .threshold-val { font-weight: 600; color: #1a1a1a; }
+    .threshold-sub {
+      font-size: 11px; font-weight: 600; color: var(--gray-400);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin: 14px 0 2px;
+    }
+    /* Penjelasan singkat di bawah angka tanah & cahaya */
+    .sensor-hint { font-size: 11px; color: var(--gray-400); margin-top: 8px; line-height: 1.35; }
+    /* Penjelasan status perangkat (menunggu data / offline) */
+    .status-hint { font-size: 12px; color: var(--gray-600); background: var(--gray-50); border-radius: 8px; padding: 8px 10px; margin-top: 10px; line-height: 1.4; display: none; }
   </style>
 </head>
 <body>
@@ -61,7 +70,7 @@
     </div>
 
     <div id="monStale" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:10px 16px;font-size:13px;color:#7c5800;margin-bottom:1.25rem;">
-      ⚠️ Belum ada data baru &gt; 15 detik — device mungkin offline. Nilai di bawah ini data terakhir yang tercatat.
+      ⚠️ Perangkat tidak mengirim data baru (offline atau belum terhubung). Angka sensor di bawah adalah data terakhir yang tercatat, sedangkan status pompa &amp; kipas tidak diketahui.
     </div>
 
     <!-- Sensor cards -->
@@ -83,16 +92,18 @@
       <div class="sensor-card">
         <div class="sensor-top">
           <div class="sensor-name">Kelembaban Tanah</div>
-          <span id="mb_soil" class="badge badge-normal">Normal</span>
+          <span id="mb_soil" class="badge badge-offline">Menunggu data</span>
         </div>
         <div class="sensor-big" id="m_soil">—<span class="sensor-unit"> ADC</span></div>
+        <div class="sensor-hint" id="mh_soil"></div>
       </div>
       <div class="sensor-card">
         <div class="sensor-top">
           <div class="sensor-name">Intensitas Cahaya</div>
-          <span id="mb_ldr" class="badge badge-normal">Normal</span>
+          <span id="mb_ldr" class="badge badge-offline">Menunggu data</span>
         </div>
         <div class="sensor-big" id="m_ldr">—<span class="sensor-unit"> ADC</span></div>
+        <div class="sensor-hint" id="mh_ldr"></div>
       </div>
       <div class="sensor-card">
         <div class="sensor-top">
@@ -116,7 +127,7 @@
             </div>
             Pompa Air
           </div>
-          <span id="mTagPump" class="tag-off">Memeriksa…</span>
+          <span id="mTagPump" class="tag-off">Menunggu data…</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
@@ -128,21 +139,29 @@
             </div>
             Kipas
           </div>
-          <span id="mTagFan" class="tag-off">Memeriksa…</span>
+          <span id="mTagFan" class="tag-off">Menunggu data…</span>
         </div>
+        <div class="status-hint" id="statusHint"></div>
       </div>
 
-      <!-- Threshold -->
+      <!-- Batas otomatisasi (nilai sama dengan firmware ESP32) -->
       <div class="card">
-        <div class="card-title">Threshold Sistem</div>
-        <div class="threshold-row"><span>Fan ON (suhu)</span><span class="threshold-val">&gt; 31 °C</span></div>
-        <div class="threshold-row"><span>Fan ON (kelembaban)</span><span class="threshold-val">&gt; 82 %</span></div>
-        <div class="threshold-row"><span>Pump ON (tanah kering)</span><span class="threshold-val">&lt; 2000 ADC</span></div>
-        <div class="threshold-row"><span>Durasi siram</span><span class="threshold-val">10 detik</span></div>
-        <div class="threshold-row"><span>Cooldown siram</span><span class="threshold-val">60 detik</span></div>
-        <div class="threshold-row"><span>Fan pasca siram</span><span class="threshold-val">90 detik</span></div>
-        <div class="threshold-row"><span>Air dianggap habis</span><span class="threshold-val">&ge; 18,5 cm</span></div>
-        <div class="threshold-row"><span>Air dianggap cukup</span><span class="threshold-val">&le; 12,5 cm</span></div>
+        <div class="card-title">Batas Otomatisasi</div>
+        <div class="threshold-row"><span>Kipas menyala (suhu)</span><span class="threshold-val">&gt; 31 °C</span></div>
+        <div class="threshold-row"><span>Kipas menyala (kelembaban udara)</span><span class="threshold-val">&gt; 82 %</span></div>
+        <div class="threshold-row"><span>Pompa menyala (tanah kering)</span><span class="threshold-val" id="thPumpOn">—</span></div>
+        <div class="threshold-row"><span>Lama penyiraman</span><span class="threshold-val">30 detik</span></div>
+        <div class="threshold-row"><span>Jeda antarpenyiraman</span><span class="threshold-val">60 detik</span></div>
+        <div class="threshold-row"><span>Tandon dianggap kosong</span><span class="threshold-val">jarak ke air &ge; 18,5 cm</span></div>
+        <div class="threshold-row"><span>Tandon dianggap cukup</span><span class="threshold-val">jarak ke air &le; 18,0 cm</span></div>
+
+        <div class="threshold-sub">Arti kategori sensor</div>
+        <div class="threshold-row"><span>Tanah kering</span><span class="threshold-val" id="catSoilDry">—</span></div>
+        <div class="threshold-row"><span>Tanah lembap</span><span class="threshold-val" id="catSoilMoist">—</span></div>
+        <div class="threshold-row"><span>Tanah basah</span><span class="threshold-val" id="catSoilWet">—</span></div>
+        <div class="threshold-row"><span>Cahaya rendah (gelap)</span><span class="threshold-val" id="catLdrLow">—</span></div>
+        <div class="threshold-row"><span>Cahaya cukup</span><span class="threshold-val" id="catLdrMid">—</span></div>
+        <div class="threshold-row"><span>Cahaya tinggi (terang)</span><span class="threshold-val" id="catLdrHigh">—</span></div>
       </div>
     </div>
 
@@ -166,11 +185,40 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, pushIdToTimestamp } from "./shared.js";
+    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, pushIdToTimestamp,
+             soilLevel, lightLevel, ACT_TEXT, STATUS_HINT,
+             SOIL_DRY_ADC, SOIL_WET_ADC, LDR_DARK_ADC, LDR_BRIGHT_ADC } from "./shared.js";
     import { ref, onValue, query, limitToLast, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML  = buildSidebar("monitoring");
     document.body.style.visibility = "visible";
+
+    // Isi tabel "Batas Otomatisasi" dari konstanta shared.js (satu sumber
+    // kebenaran), supaya tidak ada angka ganda yang bisa saling tidak cocok.
+    document.getElementById("thPumpOn").textContent      = "ADC > " + SOIL_DRY_ADC;
+    document.getElementById("catSoilDry").textContent    = "ADC ≥ " + SOIL_DRY_ADC;
+    document.getElementById("catSoilMoist").textContent  = "ADC " + SOIL_WET_ADC + " – " + (SOIL_DRY_ADC - 1);
+    document.getElementById("catSoilWet").textContent    = "ADC < " + SOIL_WET_ADC;
+    document.getElementById("catLdrLow").textContent     = "ADC ≥ " + LDR_DARK_ADC;
+    document.getElementById("catLdrMid").textContent     = "ADC " + LDR_BRIGHT_ADC + " – " + (LDR_DARK_ADC - 1);
+    document.getElementById("catLdrHigh").textContent    = "ADC < " + LDR_BRIGHT_ADC;
+
+    function setStatusHint(state) {
+      const el  = document.getElementById("statusHint");
+      const txt = STATUS_HINT[state] || "";
+      el.textContent   = txt;
+      el.style.display = txt ? "block" : "none";
+    }
+    setStatusHint("checking"); // jelaskan dari awal kenapa aktuator belum menampilkan ON/OFF
+
+    // Badge kategori dengan teks + penjelasan singkat (tanah & cahaya).
+    function setLevelBadge(badgeId, hintId, level) {
+      if (!level) return;
+      const el = document.getElementById(badgeId);
+      el.className   = "badge " + level.badge;
+      el.textContent = level.label;
+      document.getElementById(hintId).textContent = level.hint;
+    }
 
     const MAX = 20;
     const timeLabels = [];
@@ -318,6 +366,7 @@
         }
         confirmedOnline = true;
         document.getElementById("monStale").style.display = "none";
+        setStatusHint("online");
         if (pendingActuator) {
           setAct("mTagPump", "mIconPump", pendingActuator.pump);
           setAct("mTagFan",  "mIconFan",  pendingActuator.fan);
@@ -329,7 +378,8 @@
 
     // Firebase tidak otomatis reset /actuator kalau device mati/putus
     // (belum pakai onDisconnect() di firmware). Begitu stale, jangan
-    // percaya lagi ON/OFF terakhir - tampilkan eksplisit sebagai Offline.
+    // percaya lagi ON/OFF terakhir - tampilkan eksplisit "Tidak diketahui"
+    // (kata yang sama dengan Dashboard) + penjelasan kenapa.
     function setStale() {
       document.getElementById("monStale").style.display = "block";
       confirmedOnline = false;
@@ -337,11 +387,12 @@
       pendingActuator = null;
       markActUnknown("mTagPump", "mIconPump");
       markActUnknown("mTagFan",  "mIconFan");
+      setStatusHint("offline");
     }
 
     function markActUnknown(tagId, iconId) {
       document.getElementById(tagId).className   = "tag-off";
-      document.getElementById(tagId).textContent = "Offline";
+      document.getElementById(tagId).textContent = ACT_TEXT.unknown;
       document.getElementById(iconId).className  = "act-icon act-off";
     }
 
@@ -362,8 +413,8 @@
       setBadge("mb_humid", d.humidity,     v => v > 90 ? "danger" : v >= 82 ? "warning" : "normal");
       // Sensor tanah KAPASITIF: ADC BESAR = KERING (kebalikan sensor resistif).
       // SOIL_THRESHOLD_ON/OFF = 3100/3000 di firmware & notebook simulasi.
-      setBadge("mb_soil",  d.soilMoisture, v => v >= 3100 ? "danger" : v >= 3000 ? "warning" : "normal");
-      setBadge("mb_ldr",   d.ldrValue,     () => "normal");
+      setLevelBadge("mb_soil", "mh_soil", soilLevel(d.soilMoisture));
+      setLevelBadge("mb_ldr",  "mh_ldr",  lightLevel(d.ldrValue));
       setBadge("mb_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
 
       if (timeLabels.length >= MAX) {
