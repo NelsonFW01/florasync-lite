@@ -302,15 +302,15 @@ const DEVICE_BADGE = {
   offline:  "Perangkat terputus"
 };
 
-// Teks status aktuator. "Tidak diketahui" dipakai (bukan "Offline"/"Mati")
-// karena saat perangkat terputus kita memang TIDAK tahu pompa/kipas sedang
-// menyala atau tidak - nilai ON/OFF terakhir di database sudah basi.
+// Teks status aktuator. Saat perangkat terputus tampil "Offline" (bukan "Mati"):
+// ESP32 yang kehilangan WiFi tetap menjalankan pompa/kipas sendiri secara lokal,
+// jadi kita tidak bisa bilang pompanya mati - yang pasti hanya perangkatnya offline.
 export function actuatorView(isOn, deviceState) {
   if (deviceState === "online" && isOn !== null && isOn !== undefined) {
     return isOn ? { text: "Menyala", cls: "tag-on", on: true }
                 : { text: "Mati",    cls: "tag-off", on: false };
   }
-  if (deviceState === "offline") return { text: "Tidak diketahui", cls: "tag-unknown", on: false };
+  if (deviceState === "offline") return { text: "Offline", cls: "tag-unknown", on: false };
   return { text: "Menunggu data…", cls: "tag-unknown", on: false };
 }
 
@@ -329,7 +329,7 @@ export function deviceMessage(state, lastSeenMs, lastAct) {
       (DEVICE_CHECK_TIMEOUT_MS / 1000) + " detik). Status pompa dan kipas akan tampil setelah koneksi terkonfirmasi." };
   }
   if (state === "offline") {
-    return { icon: "⚠️", text: "Perangkat tidak terhubung, sehingga status pompa dan kipas saat ini tidak diketahui. " +
+    return { icon: "⚠️", text: "Perangkat sedang offline, jadi pompa dan kipas tidak bisa dipantau saat ini. " +
       (lastSeenMs ? "Data terakhir tercatat " + fmtClock(lastSeenMs) + ". " : "") +
       (lastAct ? "Status terakhir yang tercatat: pompa " + (lastAct.pump ? "menyala" : "mati") +
                  ", kipas " + (lastAct.fan ? "menyala" : "mati") + " (belum tentu sama dengan sekarang). " : "") +

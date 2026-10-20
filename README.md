@@ -77,7 +77,7 @@ Kedua halaman memakai satu logika yang sama (`createDeviceMonitor` di `shared.js
 |---|---|---|
 | **Memeriksa koneksi…** | Baru membuka halaman, maksimal 12 detik | "Memeriksa…" |
 | **Perangkat terhubung** | Data dari ESP32 masuk dalam 20 detik terakhir | **Menyala / Mati** |
-| **Perangkat terputus** | Tidak ada data baru > 20 detik (atau tidak ada data sama sekali setelah 12 detik) | **Tidak diketahui** + banner penjelasan; angka sensor diberi keterangan "nilai terakhir" |
+| **Perangkat terputus** | Tidak ada data baru > 20 detik (atau tidak ada data sama sekali setelah 12 detik) | **Offline** + banner penjelasan; angka sensor diberi keterangan "nilai terakhir" |
 
 Penentuan online/offline memakai *heartbeat* `/sensor/lastSeen` (timestamp server Firebase, ditulis ESP32 tiap 5 detik) yang dibandingkan dengan `.info/serverTimeOffset`, sehingga tidak bergantung pada jam HP/laptop. Untuk firmware lama yang belum mengirim `lastSeen`, web otomatis memakai cara cadangan (menunggu pembaruan data berikutnya).
 

@@ -440,8 +440,8 @@
 
     // Status pompa/kipas selalu mengikuti status perangkat: ON/OFF dari
     // database HANYA dipercaya kalau perangkat terkonfirmasi terhubung.
-    // Kalau tidak, tampil "Menunggu data…" / "Tidak diketahui" (bukan "Offline"
-    // yang terkesan pompanya rusak, dan bukan "Mati" yang belum tentu benar).
+    // Kalau tidak, tampil "Menunggu data…" / "Offline" (bukan "Mati", karena saat
+    // perangkat offline pompa/kipas bisa saja masih jalan sendiri secara lokal).
     function renderActuators() {
       [["Pump", "pump"], ["Fan", "fan"]].forEach(([name, key]) => {
         const isOn = lastActuator ? !!lastActuator[key] : null;
