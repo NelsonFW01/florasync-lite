@@ -134,10 +134,8 @@
               <th>Timestamp</th>
               <th>Suhu (°C)</th>
               <th>Kelembaban Udara (%)</th>
-              <th>Kelembaban Tanah (ADC)</th>
-              <th>Kondisi Tanah</th>
-              <th>Cahaya (ADC)</th>
-              <th>Kondisi Cahaya</th>
+              <th>Kelembaban Tanah</th>
+              <th>Intensitas Cahaya</th>
               <th>Level Air (cm)</th>
               <th>Pompa</th>
               <th>Kipas</th>
@@ -145,9 +143,13 @@
             </tr>
           </thead>
           <tbody id="previewBody">
-            <tr><td colspan="11" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
+            <tr><td colspan="9" class="empty-state">Klik "Preview Data" untuk melihat data</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="legend-note" id="legendNote">
+        Di file CSV/PDF, kondisi tanah &amp; cahaya dan angka ADC mentahnya ditulis di kolom terpisah.
       </div>
 
       <button class="btn-download" id="btnDownload" disabled onclick="doExport()">
@@ -162,7 +164,7 @@
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound,
-             soilText, lightText, SOIL_DRY_ADC, SOIL_WET_ADC, LDR_DARK_ADC, LDR_BRIGHT_ADC } from "./shared.js";
+             loadConfigOnce, soilCategory, lightCategory, catBadgeHtml, conditionNote } from "./shared.js";
     import { ref, get, query, orderByKey, startAt, endAt, limitToLast }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -206,10 +208,12 @@
 
     window.loadPreview = async function() {
       showError(null);
+      await loadConfigOnce(); // ambang kalibrasi dari alat (/config), tidak pernah error
+      document.getElementById("legendNote").textContent = conditionNote();
       const fromVal = document.getElementById("dateFrom").value;
       const toVal   = document.getElementById("dateTo").value;
       const tbody   = document.getElementById("previewBody");
-      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Memuat...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Memuat...</td></tr>`;
 
       let data = [];
       let capped = false;
@@ -245,7 +249,7 @@
       } catch (err) {
         console.error(err);
         showError("Gagal mengambil data dari Firebase: " + err.message);
-        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Gagal memuat data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Gagal memuat data.</td></tr>`;
         return;
       }
 
@@ -258,7 +262,7 @@
       document.getElementById("btnDownload").disabled = data.length === 0;
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Tidak ada data dalam rentang ini. Coba "Semua Data" atau lebarkan rentang tanggal.</td></tr>`;
         return;
       }
 
@@ -268,13 +272,11 @@
           <td>${tStr}</td>
           <td>${fNum(d.temperature, 1)}</td>
           <td>${fNum(d.humidity,    1)}</td>
-          <td>${fNum(d.soilMoisture, 0)}</td>
-          <td>${soilText(d.soilMoisture)}</td>
-          <td>${fNum(d.ldrValue,    0)}</td>
-          <td>${lightText(d.ldrValue)}</td>
+          <td>${condCell(soilCategory(d.soilMoisture), d.soilMoisture)}</td>
+          <td>${condCell(lightCategory(d.ldrValue),    d.ldrValue)}</td>
           <td>${fNum(d.waterLevel,  1)}</td>
-          <td>${d.pump ? "ON" : "OFF"}</td>
-          <td>${d.fan  ? "ON" : "OFF"}</td>
+          <td>${d.pump ? "Menyala" : "Mati"}</td>
+          <td>${d.fan  ? "Menyala" : "Mati"}</td>
           <td>${fmtTrigger(d.trigger)}</td>
         </tr>`;
       }).join("");
@@ -315,18 +317,20 @@
     };
 
     function exportCSV(data) {
-      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kelembaban Tanah (ADC)","Kondisi Tanah","Cahaya (ADC)","Kondisi Cahaya","Level Air (cm)","Pompa","Kipas","Trigger"];
+      // Kondisi (kata) dan angka ADC mentah ditulis di kolom TERPISAH:
+      // pembaca awam pakai kolom kondisi, analisis teknis pakai kolom ADC.
+      const header = ["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kondisi Tanah","Kelembaban Tanah (ADC)","Kondisi Cahaya","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"];
       const rows   = data.map(d => [
         fmtTs(d._ts),
         fNum(d.temperature, 1),
         fNum(d.humidity,    1),
+        condLabel(soilCategory(d.soilMoisture)),
         fNum(d.soilMoisture, 0),
-        soilText(d.soilMoisture),
+        condLabel(lightCategory(d.ldrValue)),
         fNum(d.ldrValue,    0),
-        lightText(d.ldrValue),
         fNum(d.waterLevel,  1),
-        d.pump ? "ON" : "OFF",
-        d.fan  ? "ON" : "OFF",
+        d.pump ? "Menyala" : "Mati",
+        d.fan  ? "Menyala" : "Mati",
         fmtTrigger(d.trigger)
       ].join(","));
       const csv  = [header.join(","), ...rows].join("\n");
@@ -354,28 +358,27 @@
       doc.text("Digenerate: " + new Date().toLocaleString("id-ID"), 14, 23);
       doc.text("Total record: " + data.length, 14, 28);
 
-      // Legenda kategori (dari batas kalibrasi di shared.js). Pakai ">=" bukan
-      // simbol "≥" karena font bawaan jsPDF tidak punya glyph itu.
+      // Penjelasan arti kondisi tanah/cahaya (rentang ADC dari kalibrasi alat).
       doc.setFontSize(8);
-      doc.text("Tanah: Kering >= " + SOIL_DRY_ADC + " ADC | Lembap " + SOIL_WET_ADC + "-" + (SOIL_DRY_ADC - 1) + " | Basah < " + SOIL_WET_ADC +
-               "     Cahaya: Rendah >= " + LDR_DARK_ADC + " ADC | Cukup " + LDR_BRIGHT_ADC + "-" + (LDR_DARK_ADC - 1) + " | Tinggi < " + LDR_BRIGHT_ADC, 14, 33);
+      const noteLines = doc.splitTextToSize(conditionNote(), 269);
+      doc.text(noteLines, 14, 33);
 
       doc.autoTable({
-        head: [["Timestamp","Suhu (°C)","Humid Udara (%)","Humid Tanah (ADC)","Kondisi Tanah","Cahaya (ADC)","Kondisi Cahaya","Level Air (cm)","Pompa","Kipas","Trigger"]],
+        head: [["Timestamp","Suhu (°C)","Kelembaban Udara (%)","Kondisi Tanah","Tanah (ADC)","Kondisi Cahaya","Cahaya (ADC)","Level Air (cm)","Pompa","Kipas","Trigger"]],
         body: data.map(d => [
           fmtTs(d._ts),
           fNum(d.temperature, 1),
           fNum(d.humidity,    1),
+          condLabel(soilCategory(d.soilMoisture)),
           fNum(d.soilMoisture, 0),
-          soilText(d.soilMoisture),
+          condLabel(lightCategory(d.ldrValue)),
           fNum(d.ldrValue,    0),
-          lightText(d.ldrValue),
           fNum(d.waterLevel,  1),
-          d.pump ? "ON" : "OFF",
-          d.fan  ? "ON" : "OFF",
+          d.pump ? "Menyala" : "Mati",
+          d.fan  ? "Menyala" : "Mati",
           fmtTrigger(d.trigger)
         ]),
-        startY: 38,
+        startY: 33 + noteLines.length * 3.6 + 3,
         styles: { fontSize: 8, cellPadding: 2.5 },
         headStyles: { fillColor: [63, 109, 17], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [234, 243, 222] },
@@ -403,6 +406,15 @@
     function fNum(val, dec) {
       if (val === undefined || val === null) return "—";
       return dec > 0 ? Number(val).toFixed(dec) : Math.round(val);
+    }
+
+    // Sel tabel preview: kondisi (badge berwarna) + angka ADC mentah di sampingnya.
+    function condCell(cat, raw) {
+      return cat ? catBadgeHtml(cat) + `<span class="cell-raw">${fNum(raw, 0)} ADC</span>` : "—";
+    }
+    // Kondisi sebagai teks polos untuk CSV/PDF ("—" kalau datanya tidak ada).
+    function condLabel(cat) {
+      return cat ? cat.label : "—";
     }
 
   </script>

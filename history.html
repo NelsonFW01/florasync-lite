@@ -96,8 +96,8 @@
             <th>Timestamp</th>
             <th>Suhu (°C)</th>
             <th>Kelembaban Udara (%)</th>
-            <th>Kelembaban Tanah (ADC &amp; kondisi)</th>
-            <th>Cahaya (ADC &amp; kondisi)</th>
+            <th>Kelembaban Tanah</th>
+            <th>Intensitas Cahaya</th>
             <th>Level Air (cm)</th>
             <th>Pompa</th>
             <th>Kipas</th>
@@ -114,11 +114,14 @@
     <div class="history-cards" id="cardsBody">
       <div class="empty-state">Memuat data...</div>
     </div>
+
+    <!-- Arti kondisi tanah/cahaya + rentang ADC-nya (diisi dari kalibrasi alat) -->
+    <div class="legend-note" id="legendNote"></div>
   </main>
 
   <script type="module">
     import { buildSidebar, requireAuth, logout, db, pushIdToTimestamp, timestampToPushIdBound,
-             soilLevel, lightLevel } from "./shared.js";
+             loadConfigOnce, soilCategory, lightCategory, catBadgeHtml, conditionNote } from "./shared.js";
     import { ref, query, orderByKey, startAt, endAt, limitToLast, get }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -148,6 +151,7 @@
         loadAndRender();
       });
 
+      await loadConfigOnce(); // ambang kalibrasi dari alat (/config), tidak pernah error
       await loadAndRender();
     });
 
@@ -208,6 +212,8 @@
       const tbody = document.getElementById("tableBody");
       const cards = document.getElementById("cardsBody");
 
+      document.getElementById("legendNote").textContent = conditionNote();
+
       document.getElementById("recordInfo").textContent =
         filtered.length + " data ditemukan" +
         (isAll
@@ -226,11 +232,11 @@
           <td>${tStr}</td>
           <td>${fNum(d.temperature, 1)}</td>
           <td>${fNum(d.humidity,    1)}</td>
-          <td>${fNum(d.soilMoisture, 0)} ${catBadge(soilLevel(d.soilMoisture))}</td>
-          <td>${fNum(d.ldrValue, 0)} ${catBadge(lightLevel(d.ldrValue))}</td>
+          <td>${condCell(soilCategory(d.soilMoisture), d.soilMoisture)}</td>
+          <td>${condCell(lightCategory(d.ldrValue),    d.ldrValue)}</td>
           <td>${fNum(d.waterLevel,  1)}</td>
-          <td><span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></td>
-          <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'ON' : 'OFF'}</span></td>
+          <td><span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'Menyala' : 'Mati'}</span></td>
+          <td><span class="${d.fan  ? 'tag-on' : 'tag-off'}">${d.fan  ? 'Menyala' : 'Mati'}</span></td>
           <td>${fmtTrigger(d.trigger)}</td>
         </tr>`;
       }).join("");
@@ -244,14 +250,14 @@
           </div>
           <div class="hist-grid">
             <div class="hist-field"><span class="hist-field-label">Suhu</span><span class="hist-field-val">${fNum(d.temperature, 1)} °C</span></div>
-            <div class="hist-field"><span class="hist-field-label">Humid Udara</span><span class="hist-field-val">${fNum(d.humidity, 1)} %</span></div>
-            <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Tanah</span><span class="hist-field-val">${fNum(d.soilMoisture, 0)} ADC ${catBadge(soilLevel(d.soilMoisture))}</span></div>
-            <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Cahaya</span><span class="hist-field-val">${fNum(d.ldrValue, 0)} ADC ${catBadge(lightLevel(d.ldrValue))}</span></div>
+            <div class="hist-field"><span class="hist-field-label">Kelembaban Udara</span><span class="hist-field-val">${fNum(d.humidity, 1)} %</span></div>
+            <div class="hist-field"><span class="hist-field-label">Tanah</span><span class="hist-field-val">${condText(soilCategory(d.soilMoisture), d.soilMoisture)}</span></div>
+            <div class="hist-field"><span class="hist-field-label">Cahaya</span><span class="hist-field-val">${condText(lightCategory(d.ldrValue), d.ldrValue)}</span></div>
             <div class="hist-field" style="grid-column:1/-1"><span class="hist-field-label">Level Air</span><span class="hist-field-val">${fNum(d.waterLevel, 1)} cm</span></div>
           </div>
           <div class="hist-actuators">
-            <div>Pompa <span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'ON' : 'OFF'}</span></div>
-            <div>Kipas <span class="${d.fan ? 'tag-on' : 'tag-off'}">${d.fan ? 'ON' : 'OFF'}</span></div>
+            <div>Pompa <span class="${d.pump ? 'tag-on' : 'tag-off'}">${d.pump ? 'Menyala' : 'Mati'}</span></div>
+            <div>Kipas <span class="${d.fan ? 'tag-on' : 'tag-off'}">${d.fan ? 'Menyala' : 'Mati'}</span></div>
           </div>
         </div>`;
       }).join("");
@@ -272,14 +278,18 @@
       return d.toLocaleDateString("id-ID") + " " + d.toLocaleTimeString("id-ID");
     }
 
-    // Badge kategori (Kering/Lembap/Basah, Rendah/Cukup/Tinggi) di samping angka ADC.
-    function catBadge(level) {
-      return level ? `<span class="badge ${level.badge}">${level.label}</span>` : "";
-    }
-
     function fNum(val, dec) {
       if (val === undefined || val === null) return "—";
       return dec > 0 ? Number(val).toFixed(dec) : Math.round(val);
+    }
+
+    // Sel tabel: kondisi (badge berwarna) + angka ADC mentah di sampingnya.
+    function condCell(cat, raw) {
+      return cat ? catBadgeHtml(cat) + `<span class="cell-raw">${fNum(raw, 0)} ADC</span>` : "—";
+    }
+    // Versi teks polos untuk kartu HP.
+    function condText(cat, raw) {
+      return cat ? `${cat.label} · ${fNum(raw, 0)} ADC` : "—";
     }
   </script>
 </body>

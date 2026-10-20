@@ -8,14 +8,6 @@
   <link rel="stylesheet" href="shared.css"/>
   <style>
     body { visibility: hidden; }
-    .header-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-    }
     .water-alert {
       display: none;
       align-items: center;
@@ -36,18 +28,14 @@
     .info-row {
       display: flex;
       justify-content: space-between;
+      gap: 12px;               /* nilai panjang (mis. daftar tanaman) tidak menempel ke labelnya */
       padding: 6px 0;
       border-bottom: 1px solid var(--gray-100);
       font-size: 13px;
       color: var(--gray-600);
     }
     .info-row:last-child { border-bottom: none; }
-    .info-val { font-weight: 600; color: #1a1a1a; }
-
-    /* Penjelasan singkat di bawah badge kategori sensor (tanah & cahaya) */
-    .stat-hint { font-size: 11px; color: var(--gray-400); margin-top: 6px; line-height: 1.35; }
-    /* Penjelasan status perangkat (menunggu data / offline) */
-    .status-hint { font-size: 12px; color: var(--gray-600); background: var(--gray-50); border-radius: 8px; padding: 8px 10px; margin-top: 10px; line-height: 1.4; display: none; }
+    .info-val { font-weight: 600; color: #1a1a1a; text-align: right; }
 
     /* ===== Visualisasi Sistem (pompa + kipas animasi) ===== */
     .scene-card { padding: 1.25rem; }
@@ -113,30 +101,33 @@
 <body>
   <div id="sidebarMount"></div>
 
-  <main class="main">
+  <main class="main" id="mainEl">
     <div class="header-row">
       <div class="page-header" style="margin-bottom:0">
         <div class="page-title">Dashboard</div>
         <div class="page-subtitle">Ringkasan kondisi greenhouse secara real-time</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <span id="deviceStatus" class="badge badge-offline">
-          <span class="dot"></span> Memeriksa…
+        <span id="deviceStatus" class="badge badge-checking">
+          <span class="dot"></span> Memeriksa koneksi…
         </span>
         <span id="lastUpdate" style="font-size:12px;color:var(--gray-400);">—</span>
       </div>
     </div>
 
-    <!-- Water alert -->
-    <div id="waterAlert" class="water-alert">
-      ⚠️ <strong>Peringatan:</strong>&nbsp;<span id="waterAlertText">Level air reservoir rendah! Segera isi ulang.</span>
-    </div>
+    <!-- Penjelasan status perangkat: muncul saat "memeriksa" atau "terputus".
+         Isi & logikanya sama persis dengan halaman Monitoring (shared.js). -->
+    <div id="deviceBanner" class="device-banner" role="status" aria-live="polite"></div>
+
+    <!-- Peringatan air tandon: kuning = menipis (jarak >= 16 cm), merah = habis.
+         Diisi oleh applyWaterAlert() di shared.js (sama dengan halaman Monitoring). -->
+    <div id="waterAlert" class="alert-banner" role="alert"></div>
 
     <!-- Brownout alert - cuma muncul kalau boot terakhir ESP32 disebabkan
          tegangan drop (biasanya karena pompa+kipas narik arus bareng dan
          power supply-nya kurang kuat) -->
     <div id="brownoutAlert" class="water-alert" style="display:none;">
-      ⚡ <strong>Boot terakhir karena brownout:</strong>&nbsp;tegangan sempat drop di bawah batas aman ESP32 (biasanya karena suplai daya kurang kuat). Cek adaptor & jalur power aktuator.
+      ⚡ <strong>Perangkat sempat restart karena daya listrik turun</strong>&nbsp;(brownout). Biasanya terjadi saat adaptor kurang kuat menyalakan pompa dan kipas bersamaan. Periksa adaptor dan kabel daya.
     </div>
 
 
@@ -165,9 +156,11 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#639922" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22V12M12 12C12 7 17 4 17 4S12 8 7 4c0 0 5 3 5 8z"/></svg>
           Kelembaban Tanah
         </div>
-        <div class="stat-value" id="d_soil">—<span class="stat-unit"> ADC</span></div>
-        <span id="b_soil" class="badge badge-offline">Menunggu data</span>
-        <div class="stat-hint" id="h_soil"></div>
+        <!-- Yang tampil utama: kondisi (Kering / Lembap / Basah). Angka ADC mentah
+             tetap ada di bawahnya untuk kebutuhan teknis/kalibrasi. -->
+        <div class="stat-value" id="d_soil">—</div>
+        <div class="stat-hint" id="h_soil">Menunggu data…</div>
+        <div class="stat-raw" id="r_soil">Nilai sensor: — ADC</div>
       </div>
 
       <div class="stat-card">
@@ -175,9 +168,9 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2"><circle cx="12" cy="12" r="5"/><path stroke-linecap="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           Intensitas Cahaya
         </div>
-        <div class="stat-value" id="d_ldr">—<span class="stat-unit"> ADC</span></div>
-        <span id="b_ldr" class="badge badge-offline">Menunggu data</span>
-        <div class="stat-hint" id="h_ldr"></div>
+        <div class="stat-value" id="d_ldr">—</div>
+        <div class="stat-hint" id="h_ldr">Menunggu data…</div>
+        <div class="stat-raw" id="r_ldr">Nilai sensor: — ADC</div>
       </div>
 
       <div class="stat-card">
@@ -186,7 +179,8 @@
           Level Air
         </div>
         <div class="stat-value" id="d_water">—<span class="stat-unit"> cm</span></div>
-        <span id="b_water" class="badge badge-normal">Normal</span>
+        <span id="b_water" class="badge badge-normal">Cukup</span>
+        <div class="stat-raw" style="margin-top:6px">Jarak sensor ke permukaan air: makin besar, air makin sedikit.</div>
       </div>
     </div>
 
@@ -258,7 +252,7 @@
             </div>
             Pompa Air
           </div>
-          <span id="tagPump" class="tag-off">Menunggu data…</span>
+          <span id="tagPump" class="tag-unknown">Menunggu data…</span>
         </div>
         <div class="actuator-row">
           <div class="actuator-name">
@@ -267,9 +261,8 @@
             </div>
             Kipas
           </div>
-          <span id="tagFan" class="tag-off">Menunggu data…</span>
+          <span id="tagFan" class="tag-unknown">Menunggu data…</span>
         </div>
-        <div class="status-hint" id="statusHint"></div>
       </div>
 
       <!-- Info sistem -->
@@ -281,9 +274,9 @@
         <div class="info-row"><span>Sensor</span><span class="info-val">DHT22, Soil, LDR, HC-SR04</span></div>
         <div class="info-row"><span>Sumber daya</span><span class="info-val">Adaptor 5V/2A</span></div>
         <div class="info-row"><span>Interval baca</span><span class="info-val">5 detik</span></div>
-        <div class="info-row"><span>Reset terakhir</span><span class="info-val" id="lastResetReason">—</span></div>
+        <div class="info-row"><span>Restart terakhir karena</span><span class="info-val" id="lastResetReason">—</span></div>
         <button id="btnRestart" style="margin-top:12px;width:100%;padding:9px 0;border-radius:8px;border:1px solid var(--gray-100);background:#fff;color:var(--gray-600);font-size:13px;cursor:pointer;">
-          Restart Device
+          Mulai Ulang Perangkat
         </button>
         <div id="restartStatus" style="font-size:12px;margin-top:6px;color:var(--gray-400);"></div>
       </div>
@@ -291,65 +284,94 @@
   </main>
 
   <script type="module">
-    import { buildSidebar, requireAuth, logout, db, waterState, WATER_LEVEL_EMPTY_CM, WATER_LEVEL_OK_CM,
-             soilLevel, lightLevel, actOfflineText, STATUS_HINT } from "./shared.js";
+    import {
+      buildSidebar, requireAuth, logout, db, CONFIG, watchConfig,
+      waterState, WATER_LABEL, applyWaterAlert, soilCategory, lightCategory, fmtClock,
+      createDeviceMonitor, applyDeviceUi, actuatorView
+    } from "./shared.js";
     import { ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     document.getElementById("sidebarMount").innerHTML = buildSidebar("dashboard");
     document.body.style.visibility = "visible";
 
-    requireAuth(() => {
-      document.getElementById("logoutBtn").addEventListener("click", logout);
-      document.getElementById("btnRestart").addEventListener("click", restartDevice);
-      listenData();
-      watchStale();
-      listenResetReason();
-      setStatusHint("checking"); // jelaskan dari awal kenapa aktuator belum menampilkan ON/OFF
+    const $ = id => document.getElementById(id);
 
-      // Kalau 12 detik belum ada konfirmasi online (mis. database kosong
-      // atau device mati), keluar dari status "Memeriksa…" -> Offline.
-      // Tanpa ini, kalau tidak ada data sama sekali, status akan
-      // menggantung di "Memeriksa…" selamanya.
-      setTimeout(() => { if (!confirmedOnline) setOffline(); }, 12000);
+    let lastSensor   = null;       // snapshot /sensor terakhir
+    let lastActuator = null;       // snapshot /actuator terakhir
+    let deviceState  = "checking"; // checking | online | offline (diputuskan shared.js)
+    let monitor      = null;
+
+    requireAuth(() => {
+      $("logoutBtn").addEventListener("click", logout);
+      $("btnRestart").addEventListener("click", restartDevice);
+
+      // Status perangkat: logika & teksnya SAMA dengan halaman Monitoring
+      // karena dua-duanya memakai createDeviceMonitor() dari shared.js.
+      monitor = createDeviceMonitor(onDeviceChange);
+
+      // Ambang kalibrasi dibaca dari firmware (/config) -> kategori Kering/
+      // Lembap/Basah dan Rendah/Cukup/Tinggi selalu cocok dengan alatnya.
+      watchConfig(renderSensorValues);
+
+      listenData();
+      listenResetReason();
     });
 
+    // Dipanggil setiap status perangkat berubah (dan sekali di awal).
+    function onDeviceChange(state, lastSeenMs) {
+      deviceState = state;
+      applyDeviceUi({ badge: $("deviceStatus"), banner: $("deviceBanner"), main: $("mainEl") },
+                    state, lastSeenMs, lastActuator);
+      renderActuators();
+      renderSensorValues();
+      renderLastUpdate();
+    }
+
+    function renderLastUpdate() {
+      const t = monitor ? monitor.lastSeenMs : null;
+      $("lastUpdate").textContent = !t
+        ? "—"
+        : (deviceState === "online" ? "Update: " : "Data terakhir: ") + fmtClock(t);
+    }
+
     // Perintah restart jarak jauh: cuma nulis flag ke Firebase, ESP32 yang
-    // baca & eksekusi sendiri (lihat firebaseTask di firmware). Device
-    // WAJIB online (WiFi + Firebase nyambung) buat nerima perintah ini -
-    // kalau device lagi offline, restart jarak jauh nggak akan ke-apply
-    // sampai dia balik online sendiri.
+    // baca & eksekusi sendiri (lihat firebaseTask di firmware). Perangkat
+    // WAJIB terhubung (WiFi + Firebase) untuk menerima perintah ini - kalau
+    // sedang terputus, perintah baru dijalankan saat perangkat tersambung lagi.
     async function restartDevice() {
-      const ok = confirm("Kirim perintah restart ke device? Device akan reboot dalam beberapa detik.");
+      const note = deviceState === "online" ? "" :
+        "\n\nCatatan: perangkat sedang tidak terhubung. Perintah baru dijalankan begitu perangkat tersambung kembali.";
+      const ok = confirm("Kirim perintah mulai ulang ke perangkat? Perangkat akan restart dalam beberapa detik." + note);
       if (!ok) return;
-      const status = document.getElementById("restartStatus");
+      const status = $("restartStatus");
       try {
         await set(ref(db, "/commands/restart"), true);
-        status.textContent = "Perintah terkirim — device restart dalam ~5 detik (kalau sedang online).";
+        status.textContent = "Perintah terkirim — perangkat restart dalam ~5 detik (kalau sedang terhubung).";
         status.style.color = "var(--gray-400)";
       } catch (e) {
-        status.textContent = "Gagal kirim perintah: " + (e.message || e);
+        status.textContent = "Gagal mengirim perintah: " + (e.message || e);
         status.style.color = "var(--red-600, #c0392b)";
       }
     }
 
     const RESET_REASON_LABEL = {
-      poweron: "Power-on normal",
-      external: "Reset pin eksternal",
-      software: "Software reset",
-      panic: "Crash (panic)",
-      interrupt_watchdog: "Interrupt watchdog",
-      task_watchdog: "Task watchdog (loop macet)",
-      watchdog: "Watchdog",
-      brownout: "Brownout (tegangan drop)",
-      deepsleep: "Bangun dari deep sleep",
+      poweron: "Dinyalakan (colok listrik)",
+      external: "Tombol reset",
+      software: "Restart lewat perintah",
+      panic: "Error pada program (crash)",
+      interrupt_watchdog: "Program sempat macet (watchdog)",
+      task_watchdog: "Program sempat macet (watchdog)",
+      watchdog: "Program sempat macet (watchdog)",
+      brownout: "Daya listrik turun (brownout)",
+      deepsleep: "Bangun dari mode tidur",
       unknown: "Tidak diketahui"
     };
 
     function listenResetReason() {
       onValue(ref(db, "/diagnostics/lastReset"), snap => {
         const d = snap.val();
-        const el     = document.getElementById("lastResetReason");
-        const banner = document.getElementById("brownoutAlert");
+        const el     = $("lastResetReason");
+        const banner = $("brownoutAlert");
         if (!d) {
           el.textContent = "—";
           banner.style.display = "none";
@@ -360,208 +382,105 @@
       });
     }
 
-    // Data harus masuk tiap ~5 detik (SENSOR_INTERVAL/FIREBASE_INTERVAL di
-    // firmware). Kalau lebih dari 15 detik tidak ada update susulan
-    // setelah online kekonfirmasi, anggap device offline.
-    const STALE_MS = 15000;
-    let lastSeen        = 0;
-    let confirmedOnline = false;
-    let pendingActuator = null;
-    let lastActuator    = {};   // status aktuator terakhir yang tercatat (dipakai saat offline)
-
-    function watchStale() {
-      setInterval(() => {
-        if (lastSeen && Date.now() - lastSeen > STALE_MS) setOffline();
-      }, 3000);
-    }
-
     function listenData() {
       onValue(ref(db, "/sensor"), snap => {
         const d = snap.val();
         if (!d) return;
-        handleSensorSnapshot(d);
+        lastSensor = d;
+        monitor.feed(d);          // bukti "perangkat hidup" -> status diputuskan di shared.js
+        renderSensorValues();
+        renderLastUpdate();
       });
 
       onValue(ref(db, "/actuator"), snap => {
-        const d = snap.val();
-        if (!d) return;
-        lastActuator = d;
-        if (confirmedOnline) {
-          setActuator("Pump", d.pump);
-          setActuator("Fan",  d.fan);
-        } else {
-          // Belum yakin device beneran hidup sekarang - simpan dulu,
-          // jangan langsung ditampilkan sebagai status "saat ini".
-          pendingActuator = d;
-        }
+        lastActuator = snap.val();
+        renderActuators();        // ditampilkan sesuai status perangkat saat ini
       });
     }
 
-    // Firebase SELALU mengirim nilai TERAKHIR yang tersimpan begitu
-    // listener baru nyambung - walau device-nya sudah mati dari lama.
-    // Kalau langsung dipercaya, dashboard sempat nampilin "Online" +
-    // status Pompa/Kipas hidup padahal itu cuma sisa data basi.
-    // Snapshot PERTAMA cuma ditampilkan sebagai angka referensi, belum
-    // menyalakan badge Online. Baru dipercaya online kalau snapshot KEDUA
-    // beneran masuk dalam rentang wajar (device aktif kirim tiap ~5 detik).
-    // Kalau snapshot kedua gak kunjung datang, langsung Offline - gak
-    // perlu nunggu basi 15 detik dari titik acuan yang salah dari awal.
-    function handleSensorSnapshot(d) {
-      renderSensorValues(d);
+    function renderSensorValues() {
+      const d = lastSensor;
+      if (!d) return;
+      const offline = deviceState === "offline";
 
-      if (!confirmedOnline) {
-        if (!lastSeen) {
-          lastSeen = Date.now();
-          setTimeout(() => { if (!confirmedOnline) setOffline(); }, 11000);
-          return;
-        }
-        confirmedOnline = true;
-        setOnline();
-        if (pendingActuator) {
-          setActuator("Pump", pendingActuator.pump);
-          setActuator("Fan",  pendingActuator.fan);
-          pendingActuator = null;
-        }
-      }
+      setVal("d_temp",  d.temperature, 1, "°C");
+      setVal("d_humid", d.humidity,    1, "%");
+      setVal("d_water", d.waterLevel,  1, "cm");
 
-      lastSeen = Date.now();
-      document.getElementById("lastUpdate").textContent =
-        "Update: " + new Date().toLocaleTimeString("id-ID");
+      // Ambang suhu/kelembapan udara = batas kipas menyala di firmware (via /config).
+      setBadge("b_temp",  d.temperature, v => v > 35 ? "danger" : v >= CONFIG.fanTempOn ? "warning" : "normal");
+      setBadge("b_humid", d.humidity,    v => v > 90 ? "danger" : v >= CONFIG.fanHumOn  ? "warning" : "normal");
+      setBadge("b_water", d.waterLevel,  () => waterState(d.waterLevel, d.waterEmpty, d.waterLow), WATER_LABEL);
+
+      // Tanah & cahaya: tampil sebagai kondisi (kata), angka ADC jadi info teknis.
+      // Kalau tanah kering TAPI tandon habis, penjelasannya berubah (pompa terblokir).
+      setCategory("soil", soilCategory(d.soilMoisture, { waterEmpty: d.waterEmpty === true && !offline }),
+                  d.soilMoisture, offline);
+      setCategory("ldr",  lightCategory(d.ldrValue), d.ldrValue, offline);
+
+      updateMiniTank(d.waterLevel, waterState(d.waterLevel, d.waterEmpty, d.waterLow));
+
+      // 3 tingkat: Cukup / Menipis (kuning, jarak >= 16 cm) / Habis (merah, pompa
+      // diblokir). Teksnya dibuat di shared.js supaya sama dengan Monitoring.
+      applyWaterAlert($("waterAlert"), d, offline);
     }
 
-    function renderSensorValues(d) {
-      setVal("d_temp",  d.temperature,  1, "°C");
-      setVal("d_humid", d.humidity,     1, "%");
-      setVal("d_soil",  d.soilMoisture, 0, "ADC");
-      setVal("d_ldr",   d.ldrValue,     0, "ADC");
-      setVal("d_water", d.waterLevel,   1, "cm");
-
-      // Ambang di bawah HARUS sama arah & nilainya dengan florasync_firmware.ino /
-      // Sel 2 notebook simulasi, supaya badge "Normal/Perhatian/Bahaya" cocok
-      // dengan kapan aktuator beneran menyala - bukan angka sembarang.
-      setBadge("b_temp",  d.temperature,  v => v > 35 ? "danger" : v >= 31 ? "warning" : "normal");
-      setBadge("b_humid", d.humidity,     v => v > 90 ? "danger" : v >= 82 ? "warning" : "normal");
-      // Sensor tanah KAPASITIF: ADC BESAR = KERING (kebalikan sensor resistif).
-      // SOIL_THRESHOLD_ON/OFF = 3100/3000 di firmware & notebook simulasi.
-      // Kategori (Kering/Lembap/Basah, Rendah/Cukup/Tinggi) dihitung di shared.js
-      // dari batas kalibrasi; angka ADC mentah tetap tampil di atas.
-      setLevelBadge("b_soil", "h_soil", soilLevel(d.soilMoisture));
-      setLevelBadge("b_ldr",  "h_ldr",  lightLevel(d.ldrValue));
-      setBadge("b_water", d.waterLevel,   () => waterState(d.waterLevel, d.waterEmpty));
-
-      updateMiniTank(d.waterLevel);
-
-      // Sensor mengukur JARAK ke air, bukan tinggi air - makin BESAR
-      // angkanya makin SEDIKIT airnya. waterEmpty dari firmware (sudah
-      // dihitung dengan hysteresis+fail-safe) jadi acuan utama alert ini.
-      const alertBox  = document.getElementById("waterAlert");
-      const alertText = document.getElementById("waterAlertText");
-      if (d.waterEmpty === true) {
-        alertBox.style.display = "flex";
-        alertText.textContent = "Level air reservoir rendah (" +
-          (d.waterLevel !== undefined ? Number(d.waterLevel).toFixed(1) : "?") +
-          " cm dari sensor, batas kosong " + WATER_LEVEL_EMPTY_CM +
-          " cm). Pompa diblokir sampai tandon diisi ulang.";
-      } else {
-        alertBox.style.display = "none";
-      }
-    }
-
-    function updateMiniTank(level) {
+    function updateMiniTank(level, state) {
       const maxH = 36; // tinggi visual tandon di svg, px
       const has  = level !== undefined && level !== null;
-      const ratio = has ? Math.max(0, Math.min(1, 1 - level / WATER_LEVEL_EMPTY_CM)) : 0;
+      const ratio = has ? Math.max(0, Math.min(1, 1 - level / CONFIG.waterEmptyCm)) : 0;
       const h = ratio * maxH;
-      document.getElementById("miniWater").setAttribute("y", 174 - h);
-      document.getElementById("miniWater").setAttribute("height", h);
-      document.getElementById("miniWaterLabel").textContent = has ? Number(level).toFixed(1) + " cm" : "— cm";
+      $("miniWater").setAttribute("y", 174 - h);
+      $("miniWater").setAttribute("height", h);
+      // biru = cukup, kuning = menipis, merah = habis
+      $("miniWater").setAttribute("fill", state === "danger" ? "var(--red-400)"
+                                        : state === "warning" ? "var(--amber-400)" : "var(--blue-400)");
+      $("miniWaterLabel").textContent = has ? Number(level).toFixed(1) + " cm" : "— cm";
     }
 
-    function setOnline() {
-      const el = document.getElementById("deviceStatus");
-      el.className = "badge badge-online";
-      el.innerHTML = '<span class="dot"></span> Online';
-      setStatusHint("online");
-    }
-
-    function setStatusHint(state) {
-      const el  = document.getElementById("statusHint");
-      const txt = STATUS_HINT[state] || "";
-      el.textContent   = txt;
-      el.style.display = txt ? "block" : "none";
-    }
-
-    // Badge kategori dengan teks + penjelasan singkat (tanah & cahaya).
-    function setLevelBadge(badgeId, hintId, level) {
-      const el = document.getElementById(badgeId);
-      const hint = document.getElementById(hintId);
-      if (!level) return;
-      el.className   = "badge " + level.badge;
-      el.textContent = level.label;
-      hint.textContent = level.hint;
-    }
-
-    // Firebase TIDAK otomatis menghapus/reset /actuator kalau ESP32-nya
-    // mati atau putus koneksi (firmware belum pakai onDisconnect()). Jadi
-    // kalau kipas ON pas listrik tiba-tiba mati, nilai "ON" itu nyangkut
-    // selamanya di database walau kipas fisiknya sudah pasti berhenti.
-    // Begitu status Offline, jangan percaya lagi state aktuator terakhir -
-    // tampilkan sebagai "Offline", bukan seolah itu kondisi yang sedang
-    // berjalan sekarang.
-    function setOffline() {
-      const el = document.getElementById("deviceStatus");
-      el.className = "badge badge-offline";
-      el.innerHTML = '<span class="dot"></span> Offline';
-      confirmedOnline = false;
-      lastSeen        = 0;
-      pendingActuator = null;
-      markActuatorUnknown("Pump");
-      markActuatorUnknown("Fan");
-      setStatusHint("offline");
-    }
-
-    function markActuatorUnknown(name) {
-      const txt = actOfflineText(lastActuator[name.toLowerCase()]); // "Terakhir ON/OFF"
-      const tag = document.getElementById("tag" + name);
-      tag.className  = "tag-off";
-      tag.textContent = txt;
-      const icon = document.getElementById("icon" + name);
-      icon.className = "act-icon act-off";
-      document.getElementById("scene" + name + "State").textContent = txt;
-      document.getElementById("sceneWrap").classList.remove(name.toLowerCase() + "-on");
+    // Status pompa/kipas selalu mengikuti status perangkat: ON/OFF dari
+    // database HANYA dipercaya kalau perangkat terkonfirmasi terhubung.
+    // Kalau tidak, tampil "Menunggu data…" / "Tidak diketahui" (bukan "Offline"
+    // yang terkesan pompanya rusak, dan bukan "Mati" yang belum tentu benar).
+    function renderActuators() {
+      [["Pump", "pump"], ["Fan", "fan"]].forEach(([name, key]) => {
+        const isOn = lastActuator ? !!lastActuator[key] : null;
+        const v = actuatorView(isOn, deviceState);
+        const tag = $("tag" + name);
+        tag.className   = v.cls;
+        tag.textContent = v.text;
+        $("icon" + name).className = "act-icon " + (v.on ? "act-on" : "act-off");
+        $("scene" + name + "State").textContent = v.text;
+        $("sceneWrap").classList.toggle(name.toLowerCase() + "-on", v.on);
+      });
     }
 
     function setVal(id, val, decimals, unit) {
-      const el = document.getElementById(id);
+      const el = $(id);
       const v  = val !== undefined && val !== null
         ? (decimals > 0 ? Number(val).toFixed(decimals) : Math.round(val))
         : "—";
       el.innerHTML = v + '<span class="stat-unit"> ' + unit + '</span>';
     }
 
-    function setBadge(id, val, fn) {
-      const el = document.getElementById(id);
+    function setBadge(id, val, fn, labels) {
+      const el = $(id);
       if (val === undefined || val === null) return;
       const state = fn(val);
-      const labels = { normal: "Normal", warning: "Perhatian", danger: "Bahaya" };
+      labels = labels || { normal: "Normal", warning: "Perhatian", danger: "Bahaya" };
       el.className   = "badge badge-" + state;
       el.textContent = labels[state];
     }
 
-    function setActuator(name, isOn) {
-      const tag  = document.getElementById("tag"  + name);
-      const icon = document.getElementById("icon" + name);
-      if (isOn) {
-        tag.className  = "tag-on";  tag.textContent = "ON";
-        icon.className = "act-icon act-on";
-      } else {
-        tag.className  = "tag-off"; tag.textContent = "OFF";
-        icon.className = "act-icon act-off";
-      }
-
-      const sceneWrap = document.getElementById("sceneWrap");
-      sceneWrap.classList.toggle(name.toLowerCase() + "-on", !!isOn);
-      document.getElementById("scene" + name + "State").textContent = isOn ? "ON" : "OFF";
+    // key = "soil" | "ldr". cat = hasil soilCategory()/lightCategory() (atau null).
+    function setCategory(key, cat, raw, offline) {
+      const big = $("d_" + key);
+      big.textContent = cat ? cat.label : "—";
+      big.className   = "stat-value" + (cat ? " tone-" + cat.tone : "");
+      $("h_" + key).textContent = !cat ? "Menunggu data…"
+        : offline ? "Nilai terakhir sebelum perangkat terputus." : cat.hint;
+      $("r_" + key).textContent = "Nilai sensor: " +
+        (raw !== undefined && raw !== null ? Math.round(raw) : "—") + " ADC";
     }
   </script>
 </body>

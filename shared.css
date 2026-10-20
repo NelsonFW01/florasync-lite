@@ -246,8 +246,15 @@
   .badge-normal  { background: var(--green-50);  color: var(--green-600); }
   .badge-warning { background: var(--amber-50);  color: var(--amber-400); }
   .badge-danger  { background: var(--red-50);    color: var(--red-600);   }
+  .badge-info    { background: var(--blue-50);   color: var(--blue-600);  }
   .badge-online  { background: var(--teal-50);   color: var(--teal-600);  }
-  .badge-offline { background: var(--gray-50);   color: var(--gray-400);  }
+  .badge-offline { background: var(--gray-50);   color: var(--gray-600);  box-shadow: inset 0 0 0 1px var(--gray-100); }
+  /* "Memeriksa koneksi" - kuning dengan titik berkedip, beda jelas dari
+     "terputus" (abu-abu) supaya dua keadaan itu tidak tertukar. */
+  .badge-checking { background: var(--amber-50); color: var(--amber-400); }
+  .badge-checking .dot { animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .badge-checking .dot { animation: none; } }
 
   .dot {
     width: 6px;
@@ -290,6 +297,81 @@
 
   .tag-on  { background: var(--teal-50);  color: var(--teal-600);  padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
   .tag-off { background: var(--gray-50);  color: var(--gray-400);  padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  /* Status aktuator yang BELUM/TIDAK bisa dipastikan (memeriksa / perangkat
+     terputus). Garis putus-putus supaya tidak dikira "Mati". */
+  .tag-unknown { background: #fff; color: var(--gray-600); padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px dashed var(--gray-400); }
+
+  /* ===== Header halaman + status perangkat (Dashboard & Monitoring) ===== */
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .device-banner {
+    display: none;
+    align-items: flex-start;
+    gap: 10px;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-bottom: 1.25rem;
+  }
+  .device-banner.show     { display: flex; }
+  .device-banner.checking { background: var(--amber-50); border: 1px solid #f0d9a8; color: #7c5800; }
+  .device-banner.offline  { background: var(--gray-50);  border: 1px solid var(--gray-100); color: var(--gray-600); }
+
+  /* Peringatan air tandon (Dashboard & Monitoring): kuning = menipis,
+     merah = habis. Muncul lewat applyWaterAlert() di shared.js. */
+  .alert-banner {
+    display: none;
+    align-items: flex-start;
+    gap: 10px;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-bottom: 1.25rem;
+  }
+  .alert-banner.show    { display: flex; }
+  .alert-banner.warning { background: #fff8e1;        border: 1px solid #ffe082; color: #7c5800; }
+  .alert-banner.danger  { background: var(--red-50);  border: 1px solid #f5b4ae; color: #8a1f16; }
+
+  /* Saat perangkat terputus, kartu sensor diredupkan: itu data lama. */
+  .main.device-offline .stat-card,
+  .main.device-offline .sensor-card { opacity: .65; }
+
+  /* ===== Kondisi sensor yang ramah pengguna ===== */
+  /* selektor dobel supaya menang atas .sensor-big { color } di <style> halaman */
+  .tone-normal,  .stat-value.tone-normal,  .sensor-big.tone-normal  { color: var(--green-600); }
+  .tone-warning, .stat-value.tone-warning, .sensor-big.tone-warning { color: var(--amber-400); }
+  .tone-danger,  .stat-value.tone-danger,  .sensor-big.tone-danger  { color: var(--red-600);   }
+  .tone-info,    .stat-value.tone-info,    .sensor-big.tone-info    { color: var(--blue-600);  }
+
+  /* penjelasan satu kalimat di bawah kondisi + angka mentah untuk teknis */
+  .stat-hint { font-size: 12px; line-height: 1.4; color: var(--gray-600); margin-bottom: 6px; }
+  .stat-raw  { font-size: 11px; color: var(--gray-400); }
+  .cell-raw  { font-size: 12px; color: var(--gray-400); margin-left: 4px; }
+
+  /* catatan kecil di bawah tabel/kartu (legenda, penjelasan arah nilai) */
+  .legend-note { font-size: 12px; line-height: 1.5; color: var(--gray-600); margin-top: 0.75rem; }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+    color: var(--gray-600);
+  }
+  .legend-row:last-child { border-bottom: none; }
+  .legend-group { font-size: 11px; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: .5px; margin: 10px 0 2px; }
+  .card-title + .legend-group { margin-top: 0; }
 
   .btn-primary {
     padding: 9px 20px;
@@ -445,6 +527,7 @@
     .stat-label, .sensor-name {
       font-size: 11px;
     }
+    .stat-hint { font-size: 11.5px; }
     .card, .chart-card {
       padding: 1rem;
     }
@@ -463,3 +546,4 @@
     .grid-5, .sensor-grid {
       grid-template-columns: 1fr;
     }
+  }
