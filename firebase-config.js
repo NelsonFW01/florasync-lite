@@ -1,15 +1,14 @@
 // firebase-config.js
-// Konfigurasi Firebase FloraSync Lite.
-// Nilai di bawah adalah PLACEHOLDER. Isi dengan konfigurasi proyek Firebase Anda
-// (Firebase Console > Project settings > Your apps > SDK setup and configuration).
+// File ini berisi konfigurasi Firebase FloraSync Lite
+// JANGAN ubah apapun di file ini kecuali kalian ganti project Firebase
 
 export const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "YOUR_FIREBASE_DATABASE_URL",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID"
+  apiKey: "AIzaSyAP5lGx8vTPw0pcTyxdx1kBtavbDpVmflE",
+  authDomain: "florasync-lite.firebaseapp.com",
+  databaseURL: "https://florasync-lite-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "florasync-lite",
+  storageBucket: "florasync-lite.firebasestorage.app",
+  messagingSenderId: "844535716478",
+  appId: "1:844535716478:web:da7f250460672ef1bd162f",
+  measurementId: "G-7BB5EW6TG8"
 };
